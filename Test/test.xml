@@ -1,0 +1,32 @@
+<GROUPE>
+	<PIOCHE nom="Pioche" vide="Dos.jpg" mélanger="" défausse="Déffausse" x="-130">
+		<CARTES img="Cartes.jpg" nb="20" nbc="5" nbl="4">
+			<QUANTITE id="1" qt="5" />
+			<QUANTITE id="2" qt="4" />
+			<QUANTITE id="3" qt="4" />
+			
+			<QUANTITE id="5" qt="5" />
+			<QUANTITE id="6" qt="4" />
+			<QUANTITE id="7" qt="4" />
+			
+			<QUANTITE id="9" qt="5" />
+			<QUANTITE id="10" qt="4" />
+			<QUANTITE id="11" qt="4" />
+			
+			<QUANTITE id="13" qt="5" />
+			<QUANTITE id="14" qt="4" />
+			<QUANTITE id="15" qt="4" />
+			
+			<QUANTITE id="8" qt="2" />
+			<QUANTITE id="12" qt="3" />
+			<QUANTITE id="16" qt="3" />
+			
+			<QUANTITE id="19" qt="4" />
+		</CARTES>
+	</PIOCHE>
+	<DEFFAUSE nom="Déffausse" vide="Dos.jpg" pioche="Pioche" x="130" />
+
+	<PAQUET y="-240">
+		<FIGURINE img="knight.png" nb="8" nbc="8" nbl="1" qty="5"/>
+	</PAQUET>
+</GROUPE>
