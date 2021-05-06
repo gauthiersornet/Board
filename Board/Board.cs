@@ -1,6 +1,7 @@
 ﻿using ModuleBOARD.Elements.Base;
 using ModuleBOARD.Elements.Lots;
 using ModuleBOARD.Elements.Pieces;
+using ModuleBOARD.Réseau;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -8,6 +9,7 @@ using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Net.Sockets;
+using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -15,6 +17,9 @@ using System.Xml;
 
 
 /* TODO
+ * Bien synchro les éléments sur l'état !
+ * Faire un objet spéciale qui contient des éléments et appartient à un joueur style paravent ou main... main accessible en raccourci au bas de l'écran !
+ * Lorqu'un élément est relaché sur 2, le glisser entre
  * Faire un système de cadrillage carré/hexa
  * Permettre à des éléments cadrillable de réceptionner d'autres éléments pouvant être du même cadrillage oiu pas avec des propriétés ou pas
  * Proposer un système d'IA simple pour déplacer des pions par l'ordinateur (avance chemin le plus court à porté etc)
@@ -33,10 +38,12 @@ namespace Board
         static private readonly int POS_RND_AMP = 100;
         static private readonly float CLICK_SEUIL = 5.0f;
 
-        static public BibliothèqueImage bibliothèqueImage = new BibliothèqueImage();
-        static public BibliothèqueModel bibliothèqueModel = new BibliothèqueModel();
+        private BibliothèqueImage bibliothèqueImage = new BibliothèqueImage();
+        private BibliothèqueModel bibliothèqueModel = new BibliothèqueModel();
 
-        ClientThreadBoard connection = null;
+        private ClientThreadBoard connection = null;
+
+        public GérerSessions jSession { get; private set; }
 
         static public Element RangerVersParent(Element parent)
         {
@@ -116,6 +123,7 @@ namespace Board
 
         private bool Ctrl_Down;
         private bool Shift_Down;
+
         public Board(string name = "Board principale")
         {
             GV = new GeoVue(0.0f, 0.0f, 1.0f, 0.0f, this.Width, this.Height);
@@ -255,12 +263,13 @@ namespace Board
                 if (e.Button.HasFlag(MouseButtons.Left))
                 {
                     ElmOnBoard_LEFT = this;
+                    ClickP_LEFT = e.Location;
                     SelectedP_LEFT = pt;
                     if (SelectedElm_RIGHT == null && Ctrl_Down == false && Shift_Down == false)
                     {
                         //Element elm = root.MousePiocheAt(pt, GV.GC.A);
                         Element elm, conteneur;
-                        (elm, conteneur) = root.MousePickAvecContAt(pt, GV.GC.A);
+                        (elm, conteneur) = root.MousePickAvecContAt(pt, GV.GC.A, Element.EPickUpAction.Déplacer);
                         SelectedElm_LEFT = elm?.MousePioche();
                         if (SelectedElm_LEFT != null)
                         {
@@ -289,7 +298,7 @@ namespace Board
                         SelectedElm_RIGHT = null;
                     else
                     {
-                        SelectedElm_RIGHT = root.MousePickAt(pt, GV.GC.A);
+                        SelectedElm_RIGHT = root.MousePickAt(pt, GV.GC.A, Element.EPickUpAction.Déplacer);
                         if (SelectedElm_RIGHT != null)
                         {
                             root.PutOnTop(SelectedElm_RIGHT);
@@ -312,10 +321,12 @@ namespace Board
                     if (elmAt != null)
                     {
                         SelectedElm_LEFT = elmAt.ElementLaché(SelectedElm_LEFT);
-                        if(SelectedElm_LEFT != null)
-                            ElmOnBoard_LEFT.root.AddTop(SelectedElm_LEFT);
+                        if (SelectedElm_LEFT != null)
+                            //ElmOnBoard_LEFT.root.AddTop(SelectedElm_LEFT);
+                            ElmOnBoard_LEFT.root.ElementLaché(SelectedElm_LEFT);
                     }
-                    else ElmOnBoard_LEFT.root.AddTop(SelectedElm_LEFT);
+                    //else ElmOnBoard_LEFT.root.AddTop(SelectedElm_LEFT);
+                    else ElmOnBoard_LEFT.root.ElementLaché(SelectedElm_LEFT);
                     Board brd = ElmOnBoard_LEFT;
                     brd.SelectedElm_LEFT = null;
                     brd.ElmOnBoard_LEFT = null;
@@ -378,7 +389,7 @@ namespace Board
                         if (ElmOnBoard_RIGHT == null) ElmOnBoard_RIGHT = this;
                         lock (Boards)
                         {
-                            if (ElmOnBoard_RIGHT.IsMouseInner(abp) == false)
+                            /*if (ElmOnBoard_RIGHT.IsMouseInner(abp) == false)
                             {
                                 foreach(Board brd in Boards)
                                     if(brd != ElmOnBoard_RIGHT && brd.IsMouseInner(abp))
@@ -411,7 +422,7 @@ namespace Board
                                         }
                                         break; 
                                     }
-                            }
+                            }*/
                             if(SelectedElm_RIGHT is IFigurine) ElmOnBoard_RIGHT.root.MettreAJourZOrdre(SelectedElm_RIGHT as IFigurine);
                         }
                         
@@ -437,7 +448,7 @@ namespace Board
                         Point abp = new Point(this.Left + e.X, this.Top + e.Y);
 
                         if (ElmOnBoard_LEFT == null) ElmOnBoard_LEFT = this;
-                        if (ElmOnBoard_LEFT.IsMouseInner(abp) == false)
+                        /*if (ElmOnBoard_LEFT.IsMouseInner(abp) == false)
                         {
                             lock (Boards)
                             {
@@ -472,7 +483,7 @@ namespace Board
                                         break;
                                     }
                             }
-                        }
+                        }*/
 
                         PointF pt = ElmOnBoard_LEFT.GV.Projection(new Point(abp.X - ElmOnBoard_LEFT.Left, abp.Y - ElmOnBoard_LEFT.Top));
                         SelectedElm_LEFT.GC.P.X += (pt.X - SelectedP_LEFT.X);
@@ -523,21 +534,21 @@ namespace Board
                 //PointF pt = new PointF((e.Location.X / GC.E), (e.Location.Y / GC.E));
                 Element elm;
                 if (SelectedElm_LEFT == null && SelectedElm_RIGHT == null && Shift_Down == false)
-                    elm = root.MousePickAt(pt, GV.GC.A);
+                    elm = root.MousePickAt(pt, GV.GC.A, (Ctrl_Down ? Element.EPickUpAction.Tourner : Element.EPickUpAction.Roulette));
                 else elm = null;
 
-                if (elm != null)
+                if(Ctrl_Down)
                 {
-                    if(Ctrl_Down) elm.Tourner(e.Delta);
-                    else elm.Roulette(e.Delta);
+                    if (elm != null && !elm.EstDansEtat(Element.EEtat.RotationFixe)) elm.Tourner(e.Delta);
+                    else
+                    {
+                        int delta = e.Delta / 120;
+                        delta += 8 + (int)((GV.GC.A / 45.0f) + 0.5f);
+                        delta %= 8;
+                        GV.GC.A = delta * 45.0f;
+                    }
                 }
-                else if(Ctrl_Down)
-                {
-                    int delta = e.Delta / 120;
-                    delta += 8 + (int)((GV.GC.A / 45.0f) + 0.5f);
-                    delta %= 8;
-                    GV.GC.A = delta * 45.0f;
-                }
+                else if (elm != null) elm.Roulette(e.Delta);
                 else
                 {
                     if (e.Delta < 0)
@@ -570,29 +581,41 @@ namespace Board
 
         private void Connecter()
         {
-            if (connection == null || connection.GérerConnexion() == false)
+            if (connection == null)
             {
                 if (root != null && root.EstVide == false)
                 {
-                    DialogResult dr = MessageBox.Show("Effacer la table ?", "Votre table sera éffacées, voulez-vous poursuivre ?", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
+                    DialogResult dr = MessageBox.Show("Effacer la table ?", "Votre table sera éffacées, voulez-vous poursuivre ?", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                     if (dr != DialogResult.Yes) return;
+                    root.Netoyer();
+                    this.Refresh();
                 }
-                ConnectForm cf = new ConnectForm(this);
-                cf.ShowDialog(this);
-                connection = cf.connection;
+                ConnectForm cf = new ConnectForm(this, connection);
+                if(cf.ShowDialog(this) == DialogResult.Yes) connection = cf.connection;
+            }
+            else
+            {
+                ConnectForm cf = new ConnectForm(this, connection);
+                if (cf.ShowDialog(this) == DialogResult.Yes) Déconnecter();
             }
         }
 
-        private void Déconnecter()
+        private bool Déconnecter()
         {
-            if (connection != null &&
-                MessageBox.Show("Déconnecter ?", "Êtes-vous sûr de vouloir vous déconnecter ?", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning) == DialogResult.Yes)
+            if (connection != null)
             {
                 connection.Close();
-                if(connection.SafeStop() == false)
+                if (connection.SafeStop() == false)
                     connection.Abort();
                 connection = null;
+                if (root != null)
+                {
+                    root.Netoyer();
+                    this.Refresh();
+                }
+                return true;
             }
+            else return true;
         }
 
         private Element Supprimer(Element elm)
@@ -601,6 +624,33 @@ namespace Board
             Element selm = root.Suppression(elm);
             if (selm != null) this.Refresh();
             return selm;
+        }
+
+        private void Board_MouseDoubleClick(object sender, MouseEventArgs e)
+        {
+            PointF pt = GV.Projection(e.Location);
+            if (e.Button.HasFlag(MouseButtons.Left))
+            {
+                if (SelectedElm_LEFT != null)
+                {
+                    PointF dX = new PointF(e.X - ClickP_LEFT.X, e.Y - ClickP_LEFT.Y);
+                    float dCarrée = dX.X * dX.X + dX.Y * dX.Y;
+                    if (dCarrée < CLICK_SEUIL)
+                    {
+                        SelectedElm_LEFT.Retourner();
+                        this.Refresh();
+                    }
+                }
+                else
+                {
+                    Element elm = root.MousePickAt(pt, GV.GC.A);
+                    if (elm != null)
+                    {
+                        elm.Retourner();
+                        this.Refresh();
+                    }
+                }
+            }
         }
 
         private void Board_MouseClick(object sender, MouseEventArgs e)
@@ -651,13 +701,24 @@ namespace Board
                                         new MenuItem(" +90", new EventHandler((o,eArg) => { GV.GC.A=(360.0f-90.0f); this.Refresh(); })),
                                         new MenuItem("+135", new EventHandler((o,eArg) => { GV.GC.A=(360.0f-135.0f); this.Refresh(); })),
                                         new MenuItem("+180", new EventHandler((o,eArg) => { GV.GC.A=(180.0f); this.Refresh(); }))
-                                    }),
-                            new MenuItem("-"),
-                            new MenuItem("Nouvelle fenêtre", (o,eArg) => NouvelleFenêtre())
+                                    })//,
+                            //new MenuItem("-"),
+                            //new MenuItem("Nouvelle fenêtre", (o,eArg) => NouvelleFenêtre())
                             });
                         ctxm.MenuItems.Add("-");
-                        /*if (connection == null)*/ ctxm.MenuItems.Add("Connexion", (o, eArg) => Connecter());
-                        //else ctxm.MenuItems.Add("Déconnecter", (o, eArg) => Déconnecter());
+                        if (connection == null)ctxm.MenuItems.Add("Connecter", (o, eArg) => Connecter());
+                        else
+                        {
+                            ctxm.MenuItems.Add("Connexion",
+                                    new MenuItem[]
+                                    {
+                                        new MenuItem("Créer une session", new EventHandler((o,eArg) => { new CréerSession(connection).ShowDialog(this); })), //CréerSession cs = new CréerSession(connection); if(cs.ShowDialog() == DialogResult.Yes) { NomSessionCréée = cs.NomSession; SessionCrééeHashPwd = cs.SessionHashPwd }
+                                        new MenuItem("Sessions", new EventHandler((o,eArg) => { jSession = new GérerSessions(connection); if(jSession.ShowDialog() == DialogResult.Yes); jSession = null; })),
+                                        new MenuItem("-"),
+                                        new MenuItem("Déconnecter", new EventHandler((o,eArg) => { Connecter(); }))
+                                    }
+                                );
+                        }
                         ctxm.Show(this, e.Location);
                     }
                 }
@@ -666,7 +727,20 @@ namespace Board
 
         private void Board_FormClosing(object sender, FormClosingEventArgs e)
         {
-            lock (Boards) Boards.Remove(this);
+            if (connection != null)
+            {
+                if (MessageBox.Show("Êtes-vous sûr de vouloir vous déconnecter ?", "Déconnecter ?", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                {
+                    Déconnecter();
+                    lock (Boards) Boards.Remove(this);
+                }
+                else e.Cancel = true;
+            }
+            else if(root.EstVide == false)
+            {
+                if (MessageBox.Show("Êtes-vous sûr de vouloir fermer ?", "Fermer", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No)
+                    e.Cancel = true;
+            }
         }
 
         private void Board_Load(object sender, EventArgs e)
@@ -689,6 +763,98 @@ namespace Board
         private void Board_Resize(object sender, EventArgs e)
         {
             GV.Dimention = new PointF(this.Width, this.Height);
+        }
+
+        /*public void PerteDeConnexion(string message)
+        {
+            Déconnecter();
+            MessageBox.Show(message, "Perte de connexion", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }*/
+
+        /*public void ConnectionRattée(string message)
+        {
+            Déconnecter();
+            MessageBox.Show(message, "Echec de connexion", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }*/
+
+        /*public void IdentifiantRefusé(string identifiant)
+        {
+            if (MessageBox.Show("Votre identifiant est refusé.\r\nL'identifiant automatique \"" + identifiant + "\" vous est proposé.\r\nVoulez-vous poursuivre ?", "Identifiant refusé", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No)
+            {
+                Déconnecter();
+            }
+        }*/
+
+        /*public void ConnectionRéussie()
+        {
+            MessageBox.Show("Connexion réussie", "Connexion réussie", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }*/
+
+        public void MessageServeur(OutilsRéseau.EMessage type, string message)
+        {
+            string caption;
+            MessageBoxIcon ico;
+
+            switch(type)
+            {
+                case OutilsRéseau.EMessage.Information:
+                    caption = "Information du serveur";
+                    ico = MessageBoxIcon.Information;
+                    break;
+                case OutilsRéseau.EMessage.Attention:
+                    caption = "Avertissement du serveur";
+                    ico = MessageBoxIcon.Warning;
+                    break;
+                case OutilsRéseau.EMessage.Erreur:
+                    caption = "Erreur du serveur";
+                    ico = MessageBoxIcon.Error;
+                    break;
+                case OutilsRéseau.EMessage.IdentifiantRefusée:
+                    if (MessageBox.Show("Votre identifiant est refusé.\r\nL'identifiant automatique \"" + message + "\" vous est proposé.\r\nVoulez-vous poursuivre ?", "Identifiant refusé", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                    {
+                        message = "Connexion réussie !";
+                        caption = "Connexion";
+                        ico = MessageBoxIcon.Information;
+                    }
+                    else
+                    {
+                        Déconnecter();
+                        return;
+                    }
+                    break;
+                case OutilsRéseau.EMessage.CréaSession:
+                    caption = "Création de session réussie";
+                    ico = MessageBoxIcon.Information;
+                    message = "Votre session \"" + message + "\" a bien été crée";
+                    break;
+                case OutilsRéseau.EMessage.RefuSession:
+                    caption = "Refus de création de session";
+                    ico = MessageBoxIcon.Error;
+                    message = "Création de votre session \"" + message + "\" refusée.";
+                    break;
+                case OutilsRéseau.EMessage.JoinSession:
+                    caption = "Entrée en session";
+                    ico = MessageBoxIcon.Information;
+                    root.Netoyer();
+                    message = "Vous rejoignez la session \"" + message + "\".";
+                    break;
+                case OutilsRéseau.EMessage.QuitSession:
+                    caption = "Sortie de session";
+                    ico = MessageBoxIcon.Information;
+                    root.Netoyer();
+                    message = "Vous quitez la session \"" + message + "\".";
+                    break;
+                case OutilsRéseau.EMessage.Déconnexion:
+                    caption = "Perte de connexion";
+                    ico = MessageBoxIcon.Error;
+                    break;
+                default:
+                    caption = "Message du serveur";
+                    ico = MessageBoxIcon.Asterisk;
+                    break;
+            }
+
+            if(message!=null) MessageBox.Show(message, caption, MessageBoxButtons.OK, ico);
         }
     }
 }

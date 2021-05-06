@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Numerics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -16,165 +18,270 @@ namespace Board
     {
         private delegate void dlgVoid();
         private delegate void dlgVoidString(string str);
+        private delegate void dlgVoidBoolString(bool ok, string str);
+        private delegate void dlgVoidCharString(Char type, string str);
+        private delegate void dlgVoidTypeMessString(OutilsRéseau.EMessage type, string str);
 
+        public string NomSession { get; private set; } = null;
+        private BigInteger SessionHashPwd = 0;
         private Board board;
-        private ConnectForm connectForm;
-        private IAsyncResult asyncResult = null;
+        private IAsyncResult boardAsyncResult = null;
 
-        private LinkedList<byte[]> FileOrdres;
-        private static HashSet<ServeurCodeCommande> commandesUniques = new HashSet<ServeurCodeCommande>()
+        /*
+            FinPaquet = 0, //Vide
+            MessageServeur = 1, //bool ok, Nom de la session
+            AjouterSession = 2, //Nom de la session
+            SessionRejoint = 3 //Message si err
+        */
+        static private MethodInfo[] InitBoardMethods()
         {
-            ServeurCodeCommande.ActualiserSession
-        };
+            ClientThreadBoard _ct = new ClientThreadBoard();
+            return new MethodInfo[]
+            {
+                null,
+                GetMethodInfo<OutilsRéseau.EMessage, string>(_ct.MessageServeur),
+                GetMethodInfo<string>(_ct.AjoutSession),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+            };
+        }
+        static private readonly MethodInfo[] BoardMethods = InitBoardMethods();
 
-        public ClientThreadBoard(string _identifiant, TcpClient _tcpClient, Board _board, ConnectForm _connectForm)
-            :base(_tcpClient, _identifiant)
+        private ClientThreadBoard() { }
+
+        public ClientThreadBoard(string _identifiant, BigInteger _pwhash, TcpClient _tcpClient, Board _board)
+            :base(_tcpClient, _pwhash, _identifiant)
         {
             board = _board;
-            connectForm = _connectForm;
-            FileOrdres = new LinkedList<byte[]>();
+            méthodesRéseau = BoardMethods;
         }
 
-        public bool GérerConnexion()
-        {
-            if (connectForm != null)
-            {
-                connectForm.ShowDialog(board);
-                return true;
-            }
-            return false;
-        }
-
-        private bool Identifie()
+        protected override bool Identifie()
         {
             BigInteger code = ReadUBigInteger(16);
             Guid attendu = OutilsRéseau.GuidEncode(GVersion, code);
             WriteGuid(attendu);
             int res = stream.ReadByte();
-            return (res == 0xFF);
+            if (res == 0xFF)
+            {
+                return true;
+            }
+            else
+            {
+                InvoquerBoard(OutilsRéseau.EMessage.Erreur, "Votre version n'est pas compatible.");
+                return false;
+            }
         }
 
-        private string echangerIdentifiant()
+        protected override bool EchangerIdentifiant()
         {
-            IdentifiantUL = ReadULChiffrer256();
+            BigInteger code = ReadDéchiffrer256();
             WriteChiffrer256(Identifiant.stringToBytes(), (OutilsRéseau.NB_OCTET_NOM_UTILISATEUR_MAX + 30) / 31);
-            return ReadDéChiffrer256((OutilsRéseau.NB_OCTET_NOM_UTILISATEUR_MAX + 30) / 31).bytesToString();
+            EcrireMotDePasseHash(code);
+            string id = ReadDéChiffrer256((OutilsRéseau.NB_OCTET_NOM_UTILISATEUR_MAX + 30) / 31).bytesToString();
+            if (id != "")
+            {
+                if (id != Identifiant)
+                {
+                    InvoquerBoard(OutilsRéseau.EMessage.IdentifiantRefusée, id);
+                    Identifiant = id;
+                }
+                else InvoquerBoard(OutilsRéseau.EMessage.Information, "Connexion réussie !");
+                return true;
+            }
+            else
+            {
+                InvoquerBoard(OutilsRéseau.EMessage.Erreur, "Identifiant ou mot de passe invalide.");
+                return false;
+            }
         }
 
-        protected override void fonctionnement()
+        public override void Close()
+        {
+            if (tcpClient != null) InvoquerBoard(OutilsRéseau.EMessage.Déconnexion, "Déconnexion");
+            LibererBoard();
+            base.Close();
+        }
+
+        private void MessageServeur(OutilsRéseau.EMessage type, string message)
+        {
+            switch (type)
+            {
+                case OutilsRéseau.EMessage.JoinSession:
+                    NomSession = message;
+                    break;
+            }
+            InvoquerBoard((dlgVoidTypeMessString)(board.MessageServeur), type, message);
+        }
+
+        private void AjoutSession(string nomSession)
+        {
+            GérerSessions js = ObtenirBoard()?.jSession;
+            if (js != null) InvoquerBoard((dlgVoidString)(js.AjouterSession), nomSession);
+        }
+
+        /*protected override void fonctionnement()
         {
             if (Identifie())
             {
                 InitChiffrage();
-                {
-                    string id = echangerIdentifiant();
-                    if (id != Identifiant)
-                    {
-                        if (asyncResult != null && asyncResult.IsCompleted == false) asyncResult.AsyncWaitHandle.WaitOne();
-                        asyncResult = connectForm.BeginInvoke((dlgVoidString)(connectForm.IdentifiantRefusé), id);
-                        Identifiant = id;
-                    }
-                }
 
-                etat = EClientThreadEtat.Connecté;
-                if (asyncResult != null && asyncResult.IsCompleted == false) asyncResult.AsyncWaitHandle.WaitOne();
-                asyncResult = connectForm.BeginInvoke((dlgVoid)(connectForm.ConnectionRéussie));
-                asyncResult.AsyncWaitHandle.WaitOne();
-                asyncResult = null;
-
-                // Tant que le thread n'est pas tué, on travaille
-                while (Thread.CurrentThread.IsAlive && fonctionne && tcpClient.Connected)
+                if (EchangerIdentifiant())
                 {
-                    while (stream.DataAvailable)
+                    etat = EClientThreadEtat.Connecté;
+                    InvoquerBoard((dlgVoid)(board.ConnectionRéussie));
+                    SyncroBoard();
+
+                    // Tant que le thread n'est pas tué, on travaille
+                    while (Thread.CurrentThread.IsAlive && fonctionne && tcpClient.Connected)
                     {
-                        byte[] block = ReadDéChiffrer256();
-                        if (block != null)
+                        while (stream.DataAvailable)
                         {
-                            switch ((BoardCodeCommande)block[0])
+                            fluxEntrant = ReadMemStreamDéchiffrer256();
+                            if (fluxEntrant != null)
                             {
-                                case BoardCodeCommande.AjouterSession:
-                                    block = ReadDéChiffrer256Data(block, 2);
-                                    if (block != null)
+                                for (int cmd = fluxEntrant.ReadByte(); 0 < cmd && cmd <= 255; cmd = fluxEntrant.ReadByte())
+                                {
+                                    //BoardCodeCommande cmd = (BoardCodeCommande)memStreamLecture.ReadByte();
+                                    switch ((BoardCodeCommande)cmd)
                                     {
-                                        if (asyncResult != null && asyncResult.IsCompleted == false) asyncResult.AsyncWaitHandle.WaitOne();
-                                        asyncResult = connectForm.BeginInvoke((dlgVoidString)(connectForm.AjouterSession), block.bytesToString());
+                                        case BoardCodeCommande.AjouterSession:
+
+                                            break;
+                                        case BoardCodeCommande.MessageServeur:
+                                            {
+
+                                            }
+                                            break;
+                                        default:
+                                            Close();
+                                            fonctionne = false;
+                                            break;
                                     }
-                                    break;
-                                default:
-                                    Close();
-                                    fonctionne = false;
-                                    break;
+                                }
                             }
                         }
+
+                        WriteQueue();
+
+                        // Attente de 10 ms
+                        if (stream.DataAvailable == false) Thread.Sleep(100);
                     }
 
-                    lock (FileOrdres)
-                    {
-                        if(FileOrdres.Any())
-                        {
-                            byte[] ord = FileOrdres.First.Value;
-                            FileOrdres.RemoveFirst();
-                            WriteChiffrer256(ord);
-
-                            continue;
-                        }
-                    }
-
-                    // Attente de 10 ms
-                    if (stream.DataAvailable == false) Thread.Sleep(100);
+                    InvoquerBoard((dlgVoidString)(board.PerteDeConnexion), "Déconnexion");
                 }
-
-                connectForm.BeginInvoke((dlgVoidString)(connectForm.PerteDeConnexion), "Déconnexion");
+                else InvoquerBoard((dlgVoidString)(board.ConnectionRattée), "Identifiant ou mot de passe invalide.");
             }
-            else
+            else InvoquerBoard((dlgVoidString)(board.ConnectionRattée), "Votre version n'est pas compatible.");
+            Close();
+        }*/
+
+        #region Board
+        public void SyncroBoard()
+        {
+            if (boardAsyncResult != null && boardAsyncResult.IsCompleted == false)
             {
-                if (asyncResult != null && asyncResult.IsCompleted == false) asyncResult.AsyncWaitHandle.WaitOne();
-                asyncResult = connectForm.BeginInvoke((dlgVoidString)(connectForm.ConnectionRattée), "Votre version n'est pas compatible.");
+                if (boardAsyncResult.AsyncWaitHandle.WaitOne(2000)) boardAsyncResult = null;
             }
-
-            stream.Close();
-            stream = null;
-            tcpClient.Close();
-            tcpClient = null;
         }
 
-        new protected void Close()
+        public Board ObtenirBoard()
         {
-            base.Close();
+            Board brd;
+            lock (this)
+            {
+                brd = board;
+            }
+            return brd;
         }
 
-        public void Envoyer(ServeurCodeCommande cmd, byte[] data)
+        private bool InvoquerBoard(OutilsRéseau.EMessage type, string message)
         {
-            byte[] nb = new byte[(data?.Length ?? 0) + 1];
-            nb[0] = (byte)cmd;
-            if (data != null && data.Length > 0) Array.Copy(data, 0, nb, 1, data.Length);
-
-            lock (FileOrdres)
+            Board brd = ObtenirBoard();
+            if (brd != null)
             {
-                if (commandesUniques.Contains(cmd) && FileOrdres.Any())
+                if (brd.InvokeRequired)
                 {
-                    LinkedListNode<byte[]> iter;
-                    for (iter = FileOrdres.First; iter != null; iter = iter.Next)
+                    SyncroBoard();
+                    try
                     {
-                        if (iter.Value[0] == (byte)cmd)
-                        {
-                            iter.Value = nb;
-                            break;
-                        }
+                        boardAsyncResult = brd.BeginInvoke((dlgVoidTypeMessString)(board.MessageServeur), type, message);
                     }
-                    if(iter == null) FileOrdres.AddLast(nb);
+                    catch
+                    {
+                        return false;
+                    }
+                    return true;
                 }
-                else FileOrdres.AddLast(nb);
+                else
+                {
+                    board.MessageServeur(type, message);
+                    return true;
+                }
+            }
+            else return false;
+        }
+
+        private bool InvoquerBoard(Delegate dlg, params object[] args)
+        {
+            if (dlg != null)
+            {
+                SyncroBoard();
+                Board brd = ObtenirBoard();
+                if (brd != null)
+                {
+                    try
+                    {
+                        boardAsyncResult = brd.BeginInvoke(dlg, args);
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                    return true;
+                }
+                else return false;
+            }
+            else return false;
+        }
+
+        public void LibererBoard()
+        {
+            lock (this)
+            {
+                board = null;
             }
         }
+        #endregion Board
 
         public void ActualiserLstSession()
         {
-            /*if(etat == EClientThreadEtat.Connecté)
+            if (EstEnFile(ServeurCodeCommande.ActualiserSession) == false)
+                EnqueueCommande(ServeurCodeCommande.ActualiserSession);
+        }
+
+        public bool CréerSession(string nomSession, BigInteger hashMotDePasseMaitre, BigInteger hashMotDePasseJoueur, bool demanderMaitre)
+        {
+            if (EstEnFile(ServeurCodeCommande.CréerSession) == false)
             {
-                WriteChiffrer256(ServeurCodeCommande.ActualiserSession, null);
-            }*/
-            Envoyer(ServeurCodeCommande.ActualiserSession, null);
+                EnqueueCommande(ServeurCodeCommande.CréerSession, nomSession, hashMotDePasseMaitre, hashMotDePasseJoueur, demanderMaitre);
+                return true;
+            }
+            else return false;
+        }
+
+        public bool SupprimerSession(string nomSession)
+        {
+            if (EstEnFile(ServeurCodeCommande.SupprimerSession) == false)
+            {
+                EnqueueCommande(ServeurCodeCommande.SupprimerSession, nomSession);
+                return true;
+            }
+            else return false;
         }
     }
 }

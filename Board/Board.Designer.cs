@@ -34,13 +34,13 @@
             // Board
             // 
             this.AllowDrop = true;
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.White;
-            this.ClientSize = new System.Drawing.Size(953, 602);
+            this.ClientSize = new System.Drawing.Size(1271, 741);
             this.DoubleBuffered = true;
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
-            this.Margin = new System.Windows.Forms.Padding(2);
+            this.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.Name = "Board";
             this.Text = "Board";
             this.WindowState = System.Windows.Forms.FormWindowState.Maximized;
@@ -51,6 +51,7 @@
             this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.Board_KeyDown);
             this.KeyUp += new System.Windows.Forms.KeyEventHandler(this.Board_KeyUp);
             this.MouseClick += new System.Windows.Forms.MouseEventHandler(this.Board_MouseClick);
+            this.MouseDoubleClick += new System.Windows.Forms.MouseEventHandler(this.Board_MouseDoubleClick);
             this.MouseDown += new System.Windows.Forms.MouseEventHandler(this.Board_MouseDown);
             this.MouseMove += new System.Windows.Forms.MouseEventHandler(this.Board_MouseMove);
             this.MouseUp += new System.Windows.Forms.MouseEventHandler(this.Board_MouseUp);
