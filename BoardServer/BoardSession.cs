@@ -1,7 +1,9 @@
 ﻿using ModuleBOARD.Elements.Base;
+using ModuleBOARD.Elements.Lots;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,25 +16,33 @@ namespace BoardServer
 
         public string NomSession { get; private set; }
 
-        private ulong GenerateurNetworkId = 0; //Identifiant des éléments réseaux
+        //Génération des identifiants locaux
+        private int _IdElemReseau = 0;
+        protected int NewIdElementBoard { get => (_IdElemReseau == int.MaxValue ? 1 : (++_IdElemReseau)); }
         private ulong VersionDuPartage = 0; //Identifiant de l'état courrant du board
 
         private BibliothèqueImage bibliothèqueImage = new BibliothèqueImage();
         private BibliothèqueModel bibliothèqueModel = new BibliothèqueModel();
 
-        //private Thread thread;
-        private ClientThreadServer créateur = null;
+        //private Thread thread
+        private ClientThreadServer maître = null;
         private List<ClientThreadServer> clientThreadServers = new List<ClientThreadServer>();
 
-        private string motDePasseCréateur = null;
-        private string motDePasseSession = null;
-        private bool demanderCréateur; // demander au créateur lors de la connex d'un joueur
+        private BigInteger hashMotDePasseCréateur = 0;
+        private BigInteger hashMotDePasseSession = 0;
+        private bool demanderMaître; //Demander au créateur lors de la connex d'un joueur
 
-        public BoardSession(string nomSession, ClientThreadServer _créateur)
+        private Groupe root;
+
+        public BoardSession(string nomSession, ClientThreadServer _maître, BigInteger _hashMotDePasseCréateur, BigInteger _hashMotDePasseSession, bool _demanderMaître)
         {
-            créateur = _créateur;
+            maître = _maître;
             NomSession = nomSession;
-            lock(LstBoardSessions)
+            hashMotDePasseCréateur = _hashMotDePasseCréateur;
+            hashMotDePasseSession = _hashMotDePasseSession;
+            demanderMaître = _demanderMaître;
+            root = new Groupe();
+            lock (LstBoardSessions)
             {
                 LstBoardSessions.Add(nomSession, this);
             }
@@ -40,16 +50,58 @@ namespace BoardServer
             //thread.Start();
         }
 
-        public void Close()
+        public bool Supprimer(ClientThreadServer demandeur)
         {
-            clientThreadServers.ForEach(c => c.SafeStop(1));
-            clientThreadServers.ForEach(c => c.SafeStop());
-            clientThreadServers.ForEach(c => c.Abort());
-            clientThreadServers.ForEach(c => c.Close());
-            clientThreadServers.Clear();
-            clientThreadServers = null;
-            //if (thread.Join(10000) == false)
-            //thread.Abort();
+            if (demandeur == maître)
+            {
+                lock (this)
+                {
+                    Close();
+                }
+                return true;
+            }
+            else return false;
+        }
+
+        private void Close()
+        {
+            lock (LstBoardSessions)
+            {
+                LstBoardSessions.Remove(NomSession);
+            }
+            if (clientThreadServers != null)
+            {
+                lock (clientThreadServers)
+                {
+                    clientThreadServers.ForEach(c => c.QuiterSession(this));
+                    clientThreadServers.Clear();
+                }
+                clientThreadServers = null;
+            }
+            if (root != null)
+            {
+                lock (root)
+                {
+                    root.Netoyer();
+                }
+                root = null;
+            }
+            if(bibliothèqueModel != null)
+            {
+                lock (bibliothèqueModel)
+                {
+                    bibliothèqueModel.Netoyer();
+                }
+                bibliothèqueModel = null;
+            }
+            if (bibliothèqueImage != null)
+            {
+                lock (bibliothèqueImage)
+                {
+                    bibliothèqueImage.Netoyer();
+                }
+                bibliothèqueImage = null;
+            }
         }
     }
 }

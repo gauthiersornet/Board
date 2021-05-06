@@ -1,9 +1,12 @@
 ﻿using ModuleBOARD.Réseau;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Net.Sockets;
 using System.Numerics;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,17 +15,41 @@ namespace BoardServer
 {
     public class ClientThreadServer : ClientThread
     {
-        private static ulong GenerateurJoueurNetworkId = 0; //Identifiant des joueurs réseaux
         public static Dictionary<string, ClientThreadServer> lstClientThread = new Dictionary<string, ClientThreadServer>();
-        
         private BoardSession sessionEnCours;
 
-        public ClientThreadServer(TcpClient _tcpClient)
-            :base(_tcpClient, null)
+        /*
+            FinPaquet = 0,
+            CréerSession = 1,//Nom de la session à créer et autres paramètres
+            ActualiserSession = 2, //Vide
+            RejoindreSession = 3, //Mot de passe en sha256
+            SupprimerSession = 4, //Nom de la session, l'émétteur doit être le maître de session
+        */
+
+        static private MethodInfo[] InitServMethods()
+        {
+            ClientThreadServer _ct = new ClientThreadServer();
+            return new MethodInfo[]
+            {
+                null,
+                GetMethodInfo<string,BigInteger,BigInteger,bool>(_ct.créerSession),
+                GetMethodInfo(_ct.EnvoyerSessions),
+                null,//RejoindreSession
+                GetMethodInfo<string>(_ct.SupprimerSession),
+                null,
+                null,
+                null,
+                null
+            };
+        }
+        static private readonly MethodInfo[] ServMethods = InitServMethods();
+
+        private ClientThreadServer() { }
+
+        public ClientThreadServer(TcpClient _tcpClient, BigInteger _pwhash)
+            : base(_tcpClient, _pwhash, null)
         {
             sessionEnCours = null;
-            ++GenerateurJoueurNetworkId;
-            IdentifiantUL = GenerateurJoueurNetworkId;
             lock (lstClientThread)
             {
                 if (Identifiant == null ||
@@ -31,13 +58,17 @@ namespace BoardServer
                     UTF8Encoding.UTF8.GetBytes(Identifiant).Length > OutilsRéseau.NB_OCTET_NOM_UTILISATEUR_MAX ||
                     lstClientThread.ContainsKey(Identifiant))
                 {
-                    Identifiant = "?" + Convert.ToBase64String(new byte[8].ULongToBytes(IdentifiantUL)) + "?";
+                    do
+                    {
+                        Identifiant = Convert.ToBase64String(Guid.NewGuid().ToByteArray()).Substring(0, 22);
+                    } while (lstClientThread.ContainsKey(Identifiant));
                 }
                 lstClientThread.Add(Identifiant, this);
             }
+            méthodesRéseau = ServMethods;
         }
 
-        private bool Identifie()
+        protected override bool Identifie()
         {
             BigInteger code = OutilsRéseau.SecuredRandomBigInteger128();
             WriteUBigInteger(code, 16);
@@ -48,78 +79,94 @@ namespace BoardServer
             return res;
         }
 
-        private void echangerIdentifiant()
+        protected override bool EchangerIdentifiant()
         {
-            WriteChiffrer256(IdentifiantUL);
+            BigInteger code = OutilsRéseau.SecuredRandomBigInteger256();
+            WriteChiffrer256(code);
             string id = ReadDéChiffrer256((OutilsRéseau.NB_OCTET_NOM_UTILISATEUR_MAX + 30) / 31).bytesToString();
-            if (string.IsNullOrWhiteSpace(id) == false && OutilsRéseau.EstChaineSecurisée(id))
+            if (EstMotDePasseValide(code))
             {
-                lock (lstClientThread)
+                if (string.IsNullOrWhiteSpace(id) == false && OutilsRéseau.EstChaineSecurisée(id))
                 {
-                    if (lstClientThread.ContainsKey(id) == false)
+                    lock (lstClientThread)
                     {
-                        lstClientThread.Remove(this.Identifiant);
-                        Identifiant = id;
-                        lstClientThread.Add(this.Identifiant, this);
-                    }
-                }
-            }
-            WriteChiffrer256(Identifiant.stringToBytes(), (OutilsRéseau.NB_OCTET_NOM_UTILISATEUR_MAX + 30) / 31);
-        }
-
-        private void envoyerSessions()
-        {
-            lock(BoardSession.LstBoardSessions)
-            {
-                foreach(KeyValuePair<string, BoardSession> kv in BoardSession.LstBoardSessions)
-                {
-                    WriteChiffrer256(BoardCodeCommande.AjouterSession, kv.Value.NomSession.stringToBytes(), ((OutilsRéseau.NB_OCTET_NOM_SESSION_MAX + 30) / 31));
-                }
-            }
-        }
-
-        protected override void fonctionnement()
-        {
-            if (Identifie())
-            {
-                InitChiffrage();
-                echangerIdentifiant();
-                envoyerSessions();
-
-                // Tant que le thread n'est pas tué, on travaille
-                while (Thread.CurrentThread.IsAlive && fonctionne && tcpClient.Connected)
-                {
-                    while (stream.DataAvailable)
-                    {
-                        byte[] block = ReadDéChiffrer256();
-                        if (block != null)
+                        if (lstClientThread.ContainsKey(id) == false)
                         {
-                            switch ((ServeurCodeCommande)block[0])
-                            {
-                                case ServeurCodeCommande.ActualiserSession:
-                                    envoyerSessions();
-                                    break;
-                                default:
-                                    Close();
-                                    fonctionne = false;
-                                    break;
-                            }
+                            lstClientThread.Remove(this.Identifiant);
+                            Identifiant = id;
+                            lstClientThread.Add(this.Identifiant, this);
                         }
                     }
-                    // Attente de 100 ms
-                    Thread.Sleep(100);
                 }
             }
-            Close();
+            else Identifiant = "";
+            WriteChiffrer256(Identifiant.stringToBytes(), (OutilsRéseau.NB_OCTET_NOM_UTILISATEUR_MAX + 30) / 31);
+            return Identifiant != "";
         }
 
-        protected void Close()
+        public void EnvoyerSessions()
+        {
+            lock (BoardSession.LstBoardSessions)
+            {
+                WriteChiffrer256(BoardCodeCommande.AjouterSession, "".stringToBytes());
+                foreach (KeyValuePair<string, BoardSession> kv in BoardSession.LstBoardSessions)
+                {
+                    WriteChiffrer256(BoardCodeCommande.AjouterSession, kv.Value.NomSession.stringToBytes());
+                }
+            }
+        }
+
+        private void créerSession(string nomSession, BigInteger hashPwdMaître, BigInteger hashPwdJoueur, bool prévenirMaître)
+        {
+            lock (BoardSession.LstBoardSessions)
+            {
+                if (BoardSession.LstBoardSessions.ContainsKey(nomSession))
+                    WriteCommande(BoardCodeCommande.MessageServeur, OutilsRéseau.EMessage.RefuSession, nomSession);
+                else
+                {
+                    new BoardSession(nomSession, this, hashPwdMaître, hashPwdJoueur, prévenirMaître);
+                    WriteCommande(BoardCodeCommande.MessageServeur, OutilsRéseau.EMessage.CréaSession, nomSession);
+                }
+            }
+        }
+
+        private void SupprimerSession(string nomSession)
+        {
+            bool ok = false;
+            BoardSession bs = null;
+            lock (BoardSession.LstBoardSessions)
+            {
+                if (BoardSession.LstBoardSessions.ContainsKey(nomSession))
+                    bs = BoardSession.LstBoardSessions[nomSession];
+            }
+            if (bs != null) ok = bs.Supprimer(this);
+
+            if (ok)
+            {
+                WriteCommande(BoardCodeCommande.MessageServeur, OutilsRéseau.EMessage.Information, "La session \"" + nomSession + "\" a été supprimée.");
+                EnvoyerSessions();
+            }
+            else WriteCommande(BoardCodeCommande.MessageServeur, OutilsRéseau.EMessage.Erreur, "Erreur de suppression de la session \"" + nomSession + "\".\nVous devez être maître de la session que voulez supprimer.\nSi tel est le cas, il vous faudra rejoindre celle-ci avec le mot de passe maître.");
+        }
+
+        public override void Close()
         {
             lock (lstClientThread)
             {
                 lstClientThread.Remove(this.Identifiant);
             }
             base.Close();
+        }
+
+        public void QuiterSession(BoardSession bs)
+        {
+            lock (this)
+            {
+                if (bs != sessionEnCours)
+                    return;
+            }
+            sessionEnCours = null;
+            EnqueueCommande(BoardCodeCommande.MessageServeur, OutilsRéseau.EMessage.QuitSession, bs.NomSession);
         }
     }
 }
