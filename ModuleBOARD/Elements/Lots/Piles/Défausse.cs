@@ -111,7 +111,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
             if (atts != null)
             {
                 string nomPioche = atts.GetNamedItem("pioche")?.Value;
-                if (dElements != null && dElements.ContainsKey(nomPioche))
+                if (dElements != null && nomPioche != null && dElements.ContainsKey(nomPioche))
                 {
                     Pioche = dElements[nomPioche] as Pioche;
                 }

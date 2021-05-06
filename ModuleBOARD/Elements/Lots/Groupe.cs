@@ -55,13 +55,13 @@ namespace ModuleBOARD.Elements.Lots
             GC.P.X += p.X;
             GC.P.Y += p.Y;
 
-            PointF pZero = new PointF(0.0f, 0.0f);
+            //PointF pZero = new PointF(0.0f, 0.0f);
             LstElements = new List<Element>();
             LstFigurines = new List<IFigurine>();
             foreach (XmlNode xmln in paq.ChildNodes)
             {
-                Element elm;
-                switch (xmln.Name.ToUpper().Trim())
+                Element elm = Charger(path, xmln, _dElements, bibliothèqueImage, bibliothèqueModel);
+                /*switch (xmln.Name.ToUpper().Trim())
                 {
                     case "GROUPE": elm = new Groupe(path, xmln, pZero, _dElements, bibliothèqueImage, bibliothèqueModel); break;
                     case "PILE": elm = new Pile(path, xmln, pZero, bibliothèqueImage); break;
@@ -70,8 +70,8 @@ namespace ModuleBOARD.Elements.Lots
                     case "PAQUET": elm = new Paquet(path, xmln, pZero, _dElements, bibliothèqueImage, bibliothèqueModel); break;
                     case "FIGURINE": elm = new Figurine(path, xmln, pZero, bibliothèqueImage, bibliothèqueModel); break;
                     default: elm = null; break;
-                }
-                if(elm != null)
+                }*/
+                if (elm != null)
                 {
                     string nom = xmln.Attributes?.GetNamedItem("nom")?.Value;
                     if (nom != null) _dElements.Add(nom, elm);
@@ -197,7 +197,7 @@ namespace ModuleBOARD.Elements.Lots
             else return 0.0f;
         }
 
-        public override (Element, Element) MousePickAvecContAt(ulong netId)
+        public override (Element, Element) MousePickAvecContAt(int netId)
         {
             Element felm, conteneur;
             //(felm, conteneur) = base.MousePickAvecContAt(netId);
@@ -236,7 +236,7 @@ namespace ModuleBOARD.Elements.Lots
             else return (felm, conteneur);*/
         }
 
-        public override (Element, Element) MousePickAvecContAt(PointF mp, float angle)
+        public override (Element, Element) MousePickAvecContAt(PointF mp, float angle, EPickUpAction action = 0)
         {
             mp.X -= GC.P.X;
             mp.Y -= GC.P.Y;
@@ -247,7 +247,7 @@ namespace ModuleBOARD.Elements.Lots
                     if (LstFigurines[i] != null)
                     {
                         Element felm, conteneur;
-                        (felm, conteneur) = (LstFigurines[i] as Element).MousePickAvecContAt(mp, angle);
+                        (felm, conteneur) = (LstFigurines[i] as Element).MousePickAvecContAt(mp, angle, action);
                         if (felm != null)
                         {
                             if (conteneur != null) return (felm, conteneur);
@@ -262,7 +262,7 @@ namespace ModuleBOARD.Elements.Lots
                     if (LstElements[i] != null)
                     {
                         Element felm, conteneur;
-                        (felm, conteneur) = LstElements[i].MousePickAvecContAt(mp, angle);
+                        (felm, conteneur) = LstElements[i].MousePickAvecContAt(mp, angle, action);
                         if (felm != null)
                         {
                             if (conteneur != null) return (felm, conteneur);
@@ -273,7 +273,7 @@ namespace ModuleBOARD.Elements.Lots
             return (null, null);
         }
 
-        public override Element MousePickAt(ulong netId)
+        public override Element MousePickAt(int netId)
         {
             Element elm = base.MousePickAt(netId);
             if(elm == null)
@@ -303,7 +303,7 @@ namespace ModuleBOARD.Elements.Lots
             else return elm;
         }
 
-        public override Element MousePickAt(PointF mp, float angle)
+        public override Element MousePickAt(PointF mp, float angle, EPickUpAction action = 0)
         {
             mp.X -= GC.P.X;
             mp.Y -= GC.P.Y;
@@ -313,7 +313,7 @@ namespace ModuleBOARD.Elements.Lots
                 for (int i = 0; i < LstFigurines.Count; ++i)
                     if (LstFigurines[i] != null)
                     {
-                        Element felm = (LstFigurines[i] as Element).MousePickAt(mp, angle);
+                        Element felm = (LstFigurines[i] as Element).MousePickAt(mp, angle, action);
                         if (felm != null) return felm;
                     }
             }
@@ -323,7 +323,7 @@ namespace ModuleBOARD.Elements.Lots
                 for (int i=0;i< LstElements.Count; ++i)
                     if (LstElements[i] != null)
                     {
-                        Element felm = LstElements[i].MousePickAt(mp, angle);
+                        Element felm = LstElements[i].MousePickAt(mp, angle, action);
                         if (felm != null)return felm;
                     }
             }
@@ -384,7 +384,7 @@ namespace ModuleBOARD.Elements.Lots
 
         public override Element ElementLaché(Element elm)
         {
-            if (elm is Figurine == false) AddTop(elm);
+            if (elm is Figurine == false) Add(elm);
             if(elm is IFigurine) AddFigurine(elm as IFigurine);
             return null;
         }
@@ -407,10 +407,9 @@ namespace ModuleBOARD.Elements.Lots
                     {
                         if (LstElements == null) LstElements = new List<Element>();
                         LstElements.Add(elm);
-                        PutTop(LstElements.Count - 1);
+                        PutAt(LstElements.Count - 1, trouverOrdreIdx(elm.Ordre));
                     }
                 }
-                LstElements.Sort();
             }
             return null;
         }
@@ -474,9 +473,34 @@ namespace ModuleBOARD.Elements.Lots
                     pq.LstElements = null;
                     if (LstElements != null && LstElements.Count == 0)
                         LstElements = null;
+
+                    LstElements.Sort();
                 }
             }
             return null;
+        }
+
+        public Element Add(Element elm)
+        {
+            if (elm != null && (elm is Groupe) == false)
+            {
+                elm.GC.P.X -= GC.P.X;
+                elm.GC.P.Y -= GC.P.Y;
+                if (elm is IFigurine)
+                {
+                    AddFigurine(elm as IFigurine);
+
+                }
+                if (elm is Figurine == false)
+                {
+                    if (LstElements == null) LstElements = new List<Element>();
+                    LstElements.Add(elm);
+                    if (LstElements.Count > 1)
+                        PutAt(LstElements.Count - 1, trouverOrdreIdx(elm.Ordre));
+                }
+                return null;
+            }
+            else return elm;
         }
 
         public Element AddBack(Element elm)
@@ -593,7 +617,7 @@ namespace ModuleBOARD.Elements.Lots
             }
         }
 
-        public bool PutAt(Element elm, int idxD)
+        private bool PutAt(Element elm, int idxD)
         {
             if (LstElements != null)
             {
@@ -613,7 +637,7 @@ namespace ModuleBOARD.Elements.Lots
             PutAt(idx, 0);
         }
 
-        public bool PutTop(Element elm)
+        private bool PutTop(Element elm)
         {
             return PutAt(elm, 0);
         }
@@ -641,46 +665,22 @@ namespace ModuleBOARD.Elements.Lots
             }
         }
 
-        public override void Retourner()
+        public override void MajEtat(EEtat nouvEtat)
         {
-            if (LstFigurines != null)
+            if(AEtatChangé(EEtat.À_l_envers, nouvEtat))
             {
-                foreach (Element elm in LstFigurines)
-                    elm.Retourner();
+                if (LstFigurines != null)
+                {
+                    foreach (Element elm in LstFigurines)
+                        elm.Retourner();
+                }
+                if (LstElements != null)
+                {
+                    foreach (Element elm in LstElements)
+                        elm.Retourner();
+                }
             }
-            if (LstElements != null)
-            {
-                foreach (Element elm in LstElements)
-                    elm.Retourner();
-            }
-        }
-
-        public override void Cacher()
-        {
-            if (LstFigurines != null)
-            {
-                foreach (Element elm in LstFigurines)
-                    elm.Cacher();
-            }
-            if (LstElements != null)
-            {
-                foreach (Element elm in LstElements)
-                    elm.Cacher();
-            }
-        }
-
-        public override void Révéler()
-        {
-            if (LstFigurines != null)
-            {
-                foreach (Element elm in LstFigurines)
-                    elm.Révéler();
-            }
-            if (LstElements != null)
-            {
-                foreach (Element elm in LstElements)
-                    elm.Révéler();
-            }
+            base.MajEtat(nouvEtat);
         }
 
         public override bool Roulette(int delta)
@@ -917,6 +917,31 @@ namespace ModuleBOARD.Elements.Lots
             return _lier(paq.ChildNodes, dElements);
         }
 
+        /// <summary>
+        /// Mettre à jour l'élément numéro numElm par l'élément elm
+        /// </summary>
+        /// <param name="numElm"></param>
+        /// <param name="elm"></param>
+        /// <returns></returns>
+        override public Element MettreAJour(int numElm, Element elm)
+        {
+            if (numElm == IdentifiantRéseau) return elm;
+            else
+            {
+                Element res = null;
+                for (int i = 0; res == null && i < LstElements.Count; ++i)
+                {
+                    Element e = LstElements[i];
+                    if (e != null)
+                    {
+                        res = e.MettreAJour(numElm, elm);
+                        if (e == res) LstElements[i] = elm;
+                    }
+                }
+                return res;
+            }
+        }
+
         public override Element Suppression(Element elm)
         {
             Element re;
@@ -963,6 +988,20 @@ namespace ModuleBOARD.Elements.Lots
                     return re;
                 }
                 return null;
+            }
+        }
+
+        public void Netoyer()
+        {
+            if(LstElements != null)
+            {
+                LstElements.Clear();
+                LstElements = null;
+            }
+            if (LstFigurines != null)
+            {
+                LstFigurines.Clear();
+                LstFigurines = null;
             }
         }
 

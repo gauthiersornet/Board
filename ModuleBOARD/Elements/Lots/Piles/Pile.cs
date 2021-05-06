@@ -48,8 +48,13 @@ namespace ModuleBOARD.Elements.Lots.Piles
                     else imgref = PileVide;
                 }
                 else imgref = PileVide;*/
-                KeyValuePair<Image, Image> kv = Images.FirstOrDefault(x => x.Key != null || x.Value != null);
-                Image imgref = kv.Key ?? kv.Value ?? PileVide;
+                Image imgref;
+                if (Images != null && Images.Any())
+                {
+                    KeyValuePair<Image, Image> kv = Images.FirstOrDefault(x => x.Key != null || x.Value != null);
+                    imgref = kv.Key ?? kv.Value ?? PileVide;
+                }
+                else imgref = PileVide;
 
                 PointF sz = GC.ProjSize(imgref.Rect());
                 sz.X += ep;
@@ -78,9 +83,9 @@ namespace ModuleBOARD.Elements.Lots.Piles
             GC.P.Y += p.Y;
             //Parent = parent;
             string filePV = paq.Attributes?.GetNamedItem("vide")?.Value;
-            if(filePV != null) PileVide = bibliothèqueImage.LoadSImage(path, filePV, paq, "dx", "dy", "dw", "dh");
+            if(filePV != null) PileVide = bibliothèqueImage.ChargerSImage(path, filePV, paq, "dx", "dy", "dw", "dh");
 
-            Images = bibliothèqueImage.LoadCartesImage(path, paq.ChildNodes, PileVide);
+            Images = bibliothèqueImage.ChargerCartesImage(path, paq.ChildNodes, PileVide);
             /*if(Images != null)
             {
                 GC.P.X -= Images.Count * CEpaisseur;
@@ -307,6 +312,13 @@ namespace ModuleBOARD.Elements.Lots.Piles
             else return null;
         }*/
 
+        public override (Element, Element) MousePickAvecContAt(PointF mp, float angle, EPickUpAction action = 0)
+        {
+            if (action.HasFlag(EPickUpAction.Déplacer) && Images != null && Images.Count > 0)
+                action &= ~EPickUpAction.Déplacer;
+            return base.MousePickAvecContAt(mp, angle, action);
+        }
+
         //public override Element MousePiocheAt(PointF mp, float angle)
         public override Element MousePioche()
         {
@@ -351,8 +363,11 @@ namespace ModuleBOARD.Elements.Lots.Piles
                 }
 
                 elm2D.GC = GC;
-                elm2D.GC.P.X -= Images.Count * CEpaisseur;
-                elm2D.GC.P.Y -= Images.Count * CEpaisseur;
+                if (Images != null && Images.Any())
+                {
+                    elm2D.GC.P.X -= Images.Count * CEpaisseur;
+                    elm2D.GC.P.Y -= Images.Count * CEpaisseur;
+                }
                 elm2D.Parent = this;
 
                 return elm2D;
@@ -532,26 +547,24 @@ namespace ModuleBOARD.Elements.Lots.Piles
             return PutAt(elm, 0);
         }*/
 
-        public override void Retourner()
+        public override void MajEtat(EEtat nouvEtat)
         {
-            Courrante = ~Courrante;
-        }
-
-        public override void Cacher()
-        {
-            if(Courrante >= 0) Courrante = ~Courrante;
-        }
-
-        public override void Révéler()
-        {
-            if (Courrante < 0) Courrante = ~Courrante;
+            if (AEtatChangé(EEtat.À_l_envers, nouvEtat))
+            {
+                Courrante = ~Courrante;
+            }
+            base.MajEtat(nouvEtat);
         }
 
         public override bool Roulette(int delta)
         {
             if (Images != null && Images.Count>0)
             {
-                if (Courrante < 0) Courrante = ~Courrante;//On montre
+                if (Courrante < 0)
+                {
+                    Courrante = ~Courrante;//On montre
+                    base.Révéler();
+                }
                 else if (delta < 0)
                 {
                     ++Courrante;

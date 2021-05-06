@@ -65,7 +65,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
             if (atts != null)
             {
                 string nomDéfausse = atts.GetNamedItem("défausse")?.Value;
-                if (dElements != null && dElements.ContainsKey(nomDéfausse))
+                if (dElements != null && nomDéfausse != null && dElements.ContainsKey(nomDéfausse))
                 {
                     Défausse = dElements[nomDéfausse] as Défausse;
                 }

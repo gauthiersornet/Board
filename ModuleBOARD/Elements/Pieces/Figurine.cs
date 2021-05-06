@@ -27,8 +27,10 @@ namespace ModuleBOARD.Elements.Pieces
     public class Figurine : Element, IFigurine
     {
         public Model2_5D model2_5D;
-        public bool à_l_endroit;
-        public bool Couchée;
+
+        public bool à_l_endroit { get => !EstDansEtat(EEtat.À_l_envers); set => AssignerEtat(EEtat.À_l_envers, !value); }
+
+        public bool Couchée { get => EstDansEtat(EEtat.Couché); set => AssignerEtat(EEtat.Couché, value); }
 
         public float Z { get; set; }
 
@@ -60,27 +62,12 @@ namespace ModuleBOARD.Elements.Pieces
 
         public override PointF Size => GC.ProjSize(model2_5D.Size(GC.A, à_l_endroit));
 
-        public override void Cacher()
-        {
-            à_l_endroit = false;
-        }
-
-        public override void Révéler()
-        {
-            à_l_endroit = true;
-        }
-
-        public override void Retourner()
-        {
-            à_l_endroit = !à_l_endroit;
-        }
-
         public override void Dessiner(RectangleF vue, float angle, Graphics g, PointF p)
         {
             GeoCoord2D gc = GC;
             gc.P.X += p.X;
             gc.P.Y += p.Y;
-            gc.A = (gc.A + 360.0f - angle + (Couchée ? 180.0f : 0)) % 360.0f;
+            gc.A = (gc.A + angle + (Couchée ? 180.0f : 0)) % 360.0f;
 
             bool mirrorX = false, mirrorY = false;
             Image img = model2_5D?.ObtenirImage(gc.A, à_l_endroit, out mirrorX, out mirrorY);
@@ -205,19 +192,31 @@ namespace ModuleBOARD.Elements.Pieces
             return true;
         }
 
+        public override (Element, Element) MousePickAvecContAt(PointF mp, float angle, EPickUpAction action)
+        {
+            if (action.HasFlag(EPickUpAction.Roulette)) action |= EPickUpAction.Tourner;
+            return base.MousePickAvecContAt(mp, angle, action);
+        }
+
+        public override Element MousePickAt(PointF mp, float angle, EPickUpAction action)
+        {
+            if (action.HasFlag(EPickUpAction.Roulette)) action |= EPickUpAction.Tourner;
+            return base.MousePickAt(mp, angle, action);
+        }
+
         override public object Clone()
         {
             return new Figurine(this);
         }
 
-        override public ContextMenu Menu(Control ctrl)
+        /*override public ContextMenu Menu(Control ctrl)
         {
             ContextMenu cm = base.Menu(ctrl);
             if (cm == null) cm = new ContextMenu();
-            /*cm.MenuItems.Add("Ranger", new EventHandler((o, e) => { Board.RangerElement(this); }));*/
+            //cm.MenuItems.Add("Ranger", new EventHandler((o, e) => { Board.RangerElement(this); }));
             if(this.Couchée) cm.MenuItems.Add("Relever", new EventHandler((o, e) => { this.Couchée = false; ctrl.Refresh(); }));
             else cm.MenuItems.Add("Coucher", new EventHandler((o, e) => { this.Couchée = true; ctrl.Refresh(); }));
             return cm;
-        }
+        }*/
     }
 }

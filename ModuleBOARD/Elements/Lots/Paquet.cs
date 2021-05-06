@@ -69,12 +69,15 @@ namespace ModuleBOARD.Elements.Lots
             GC.P.X += p.X;
             GC.P.Y += p.Y;
 
-            PointF pZero = new PointF(0.0f, 0.0f);
+            //PointF pZero = new PointF(0.0f, 0.0f);
             LstElements = new List<SElemQty>();
             foreach (XmlNode xmln in paq.ChildNodes)
             {
                 Element elm;
-                switch (xmln.Name.ToUpper().Trim())
+                if (xmln.Name.ToUpper().Trim() != "GROUPE")
+                    elm = Charger(path, xmln, _dElements, bibliothèqueImage, bibliothèqueModel);
+                else elm = null;
+                /*switch (xmln.Name.ToUpper().Trim())
                 {
                     //case "GROUPE": elm = new Groupe(path, xmln, pZero, _dElements); break;
                     case "PILE": elm = new Pile(path, xmln, pZero, bibliothèqueImage); break;
@@ -83,8 +86,8 @@ namespace ModuleBOARD.Elements.Lots
                     case "PAQUET": elm = new Paquet(path, xmln, pZero, _dElements, bibliothèqueImage, bibliothèqueModel); break;
                     case "FIGURINE": elm = new Figurine(path, xmln, pZero, bibliothèqueImage, bibliothèqueModel); break;
                     default: elm = null; break;
-                }
-                if (elm != null)
+                }*/
+                if (elm != null && !(elm is Groupe))
                 {
                     elm.Parent = this;
                     string nom = xmln.Attributes?.GetNamedItem("nom")?.Value;
@@ -101,7 +104,11 @@ namespace ModuleBOARD.Elements.Lots
 
             if (LstElements != null && LstElements.Any())
             {
-                ElementSélectionné = 0;
+                if (paq.Attributes?.GetNamedItem("caché") != null)
+                    ElementSélectionné = -1;
+                else if (paq.Attributes?.GetNamedItem("montré") != null)
+                    ElementSélectionné = 0;
+                else ElementSélectionné = 0;
                 CorrigerSelection();
             }
         }
@@ -201,11 +208,11 @@ namespace ModuleBOARD.Elements.Lots
             return IsAt(mp, sz);
         }*/
 
-        public override Element MousePickAt(PointF mp, float angle)
+        /*public override Element MousePickAt(PointF mp, float angle)
         {
             if (IsAt(mp, angle)) return this;
             else return null;
-        }
+        }*/
 
         private bool ADuContenu()
         {
@@ -456,21 +463,20 @@ namespace ModuleBOARD.Elements.Lots
             return (this == elm);
         }
 
-
-        public override void Retourner()
+        public override void MajEtat(EEtat nouvEtat)
         {
-            if (ElementSélectionné < 0) ElementSélectionné = 0;
-            else if (ImgCaché != null) ElementSélectionné = -1;
-        }
-
-        public override void Cacher()
-        {
-            if (ImgCaché != null) ElementSélectionné = -1;
-        }
-
-        public override void Révéler()
-        {
-            ElementSélectionné = 0;
+            if(AEtatChangé(EEtat.À_l_envers, nouvEtat))
+            {
+                if(EstDansEtat(EEtat.À_l_envers))
+                {
+                    ElementSélectionné = -1;
+                }
+                else
+                {
+                    ElementSélectionné = 0;
+                }
+            }
+            base.MajEtat(nouvEtat);
         }
 
         public override bool Roulette(int delta)
@@ -553,6 +559,31 @@ namespace ModuleBOARD.Elements.Lots
                 return re;
             }
             else return null;
+        }
+
+        /// <summary>
+        /// Mettre à jour l'élément numéro numElm par l'élément elm
+        /// </summary>
+        /// <param name="numElm"></param>
+        /// <param name="elm"></param>
+        /// <returns></returns>
+        override public Element MettreAJour(int numElm, Element elm)
+        {
+            if (numElm == IdentifiantRéseau) return elm;
+            else
+            {
+                Element res = null;
+                for (int i = 0; res == null && i < LstElements.Count; ++i)
+                {
+                    SElemQty e = LstElements[i];
+                    if (e.Elm != null)
+                    {
+                        res = e.Elm.MettreAJour(numElm, elm);
+                        if (e.Elm == res) e.Elm = elm;
+                    }
+                }
+                return res;
+            }
         }
 
         /*override public ContextMenu Menu(Control ctrl)

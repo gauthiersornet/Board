@@ -1,4 +1,6 @@
-﻿using ModuleBOARD.Elements.Lots.Piles;
+﻿using ModuleBOARD.Elements.Lots;
+using ModuleBOARD.Elements.Lots.Piles;
+using ModuleBOARD.Elements.Pieces;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -49,22 +51,69 @@ namespace ModuleBOARD.Elements.Base
         {
             DElements.Clear();
         }*/
+        /// <summary>
+        /// Flag d'état
+        /// </summary>
+        [Flags]
+        public enum EEtat : byte
+        {
+            Couché = (1 << 0),
+            À_l_envers = (1 << 1),
+            PositionFixe = (1 << 2),
+            RotationFixe = (1 << 3),
+        };
 
-        public ulong NetworkID = 0;
+        [Flags]
+        public enum EPickUpAction
+        {
+            Déplacer = (1 << 2),
+            Tourner = (1 << 3),
+            Roulette = (1 << 8),
+        };
+
+        public int IdentifiantRéseau = 0; //Inférieur à zéro alors élément local, sinon élément global
         public GeoCoord2D GC = new GeoCoord2D(0.0f, 0.0f, 180.0f, 0.0f);
         public sbyte Ordre = 0; // bottom < top
+        private EEtat Etat;
         //public PointF P = default;
         //public float ElemEchelle = 180.0f;//Basé sur le plus petit côté
         public abstract PointF Size { get; }
         public Element Parent;
         public virtual bool EstParent { get => false; }
 
-        protected Element() { }
+        protected Element() { /*Etat = (EEtat)0;*/ }
         protected Element(Element elm)
         {
             GC = elm.GC;
             Ordre = elm.Ordre;
+            Etat = elm.Etat;
             Parent = elm.Parent;
+        }
+
+        static public Element Charger(string path, XmlNode xmln, Dictionary<string, Element> _dElements, BibliothèqueImage bibliothèqueImage, BibliothèqueModel bibliothèqueModel)
+        {
+            PointF pZero = new PointF(0.0f, 0.0f);
+            Element elm;
+            switch (xmln.Name.ToUpper().Trim())
+            {
+                case "ELEMENT2D":
+                    if (xmln.Attributes?.GetNamedItem("img") != null)
+                    {
+                        if (xmln.Attributes?.GetNamedItem("dos") != null)
+                            elm = new Element2D2F(path, xmln, pZero, bibliothèqueImage);
+                        else elm = new Element2D(path, xmln, pZero, bibliothèqueImage);
+                    }
+                    else elm = null;
+                    break;
+                case "GROUPE": elm = new Groupe(path, xmln, pZero, _dElements, bibliothèqueImage, bibliothèqueModel); break;
+                case "PILE": elm = new Pile(path, xmln, pZero, bibliothèqueImage); break;
+                case "PIOCHE": elm = new Pioche(path, xmln, pZero, bibliothèqueImage); break;
+                case "DEFFAUSE": elm = new Défausse(path, xmln, pZero, bibliothèqueImage); break;
+                case "PAQUET": elm = new Paquet(path, xmln, pZero, _dElements, bibliothèqueImage, bibliothèqueModel); break;
+                case "FIGURINE": elm = new Figurine(path, xmln, pZero, bibliothèqueImage, bibliothèqueModel); break;
+                default: elm = null; break;
+            }
+            return elm;
         }
 
         protected void Load(XmlNode paq)
@@ -90,21 +139,57 @@ namespace ModuleBOARD.Elements.Base
             if (strA == null || float.TryParse(strA, out ang) == false) ang = 0.0f;
             GC.A = ang;
 
-            string strO = att?.GetNamedItem("ordre")?.Value;
+            string strO = att?.GetNamedItem("ord")?.Value;
             sbyte ordre;
             if (strO == null || sbyte.TryParse(strO, out ordre) == false) ordre = 0;
             Ordre = ordre;
+
+            EEtat nvEtat = Etat;
+
+            if (att?.GetNamedItem("caché") != null) nvEtat |= EEtat.À_l_envers;
+            else if (att?.GetNamedItem("montré") != null) nvEtat &= ~EEtat.À_l_envers;
+            else if (this is Figurine) nvEtat &= ~EEtat.À_l_envers;
+            else nvEtat |= EEtat.À_l_envers;
+
+            if (att?.GetNamedItem("couché") != null) nvEtat |= EEtat.Couché;
+            else if (att?.GetNamedItem("debout") != null) nvEtat &= ~EEtat.Couché;
+            else nvEtat &= ~EEtat.Couché;
+
+            string strPostype = att?.GetNamedItem("position")?.Value;
+            if(strPostype!=null)
+            {
+                if (strPostype == "fixe") nvEtat |= EEtat.PositionFixe;
+                else if (strPostype == "mobile") nvEtat &= ~EEtat.PositionFixe;
+            }
+
+            string strRottype = att?.GetNamedItem("rotation")?.Value;
+            if (strRottype != null)
+            {
+                if (strRottype == "fixe") nvEtat |= EEtat.RotationFixe;
+                else if (strRottype == "mobile") nvEtat &= ~EEtat.RotationFixe;
+            }
+
+            MajEtat(nvEtat);
         }
 
         //public Paquet Parent;
         public abstract void Dessiner(RectangleF vue, float angle, Graphics g, PointF p);
 
-        public virtual (Element, Element) MousePickAvecContAt(ulong netId)
+        public virtual (Element, Element) MousePickAvecContAt(int netId)
         {
-            if (netId == NetworkID) return (this, null);
+            if (netId == IdentifiantRéseau) return (this, null);
             else return (null, null);
         }
-        public virtual (Element, Element) MousePickAvecContAt(PointF mp, float angle)
+
+        /// <summary>
+        /// Méthode chargée de trouver un élément qui serrait sous le coordonnées mp
+        /// si et seulement si les état permet l'action
+        /// </summary>
+        /// <param name="mp"></param>
+        /// <param name="angle"></param>
+        /// <param name="action"></param>
+        /// <returns></returns>
+        public virtual (Element, Element) MousePickAvecContAt(PointF mp, float angle, EPickUpAction action = 0)
         {
             /*SImage SImg;
             if (Caché) SImg = Dos.IsSizeValid() ? Dos : Devant;
@@ -118,16 +203,26 @@ namespace ModuleBOARD.Elements.Base
                 else return null;
             }
             else return null;*/
-            if (IsAt(mp, angle)) return (this, null);
+            if (action.HasFlag(EPickUpAction.Roulette)) action |= EPickUpAction.Tourner;
+            if (!((EEtat)action != 0 && Etat.HasFlag((EEtat)action)) && IsAt(mp, angle)) return (this, null);
             else return (null, null);
         }
 
-        public virtual Element MousePickAt(ulong netId)
+        public virtual Element MousePickAt(int netId)
         {
-            if (netId == NetworkID) return this;
+            if (netId == IdentifiantRéseau) return this;
             else return null;
         }
-        public virtual Element MousePickAt(PointF mp, float angle)
+
+        /// <summary>
+        /// Méthode chargée de trouver un élément qui serrait sous le coordonnées mp
+        /// si et seulement si les état permet l'action
+        /// </summary>
+        /// <param name="mp"></param>
+        /// <param name="angle"></param>
+        /// <param name="action"></param>
+        /// <returns></returns>
+        public virtual Element MousePickAt(PointF mp, float angle, EPickUpAction action = 0)
         {
             /*SImage SImg;
             if (Caché) SImg = Dos.IsSizeValid() ? Dos : Devant;
@@ -141,7 +236,8 @@ namespace ModuleBOARD.Elements.Base
                 else return null;
             }
             else return null;*/
-            if (IsAt(mp, angle)) return this;
+            if (action.HasFlag(EPickUpAction.Roulette)) action |= EPickUpAction.Tourner;
+            if (!((EEtat)action != 0 && Etat.HasFlag((EEtat)action)) && IsAt(mp, angle)) return this;
             else return null;
         }
         public virtual Element MousePioche()
@@ -217,19 +313,51 @@ namespace ModuleBOARD.Elements.Base
             else return null;
         }
         //Retrouner l'élément visible/caché
-        public abstract void Retourner();
+        virtual public void MajEtat(EEtat nouvEtat) { Etat = nouvEtat; }
+        public void MettreEtat(EEtat etat)
+        {
+            MajEtat(Etat | etat);
+        }
+        public void RetirerEtat(EEtat etat)
+        {
+            MajEtat(Etat & ~etat);
+        }
+        public void InverserEtat(EEtat etat)
+        {
+            MajEtat(Etat ^ etat);
+        }
+        public bool EstDansEtat(EEtat etat)
+        {
+            return Etat.HasFlag(etat);
+        }
+
+        public bool AEtatChangé(EEtat cible, EEtat nouvEtat)
+        {
+            return (Etat ^ nouvEtat).HasFlag(cible);
+        }
+
+        public void AssignerEtat(EEtat etat, bool mettre)
+        {
+            if (mettre) MettreEtat(etat);
+            else RetirerEtat(etat);
+        }
+
+        public void Retourner() { MajEtat(Etat ^ EEtat.À_l_envers); }
         //Cacher l'élément
-        public abstract void Cacher();
+        public void Cacher() { MajEtat(Etat | EEtat.À_l_envers); }
         //Montrer l'élément
-        public abstract void Révéler();
+        public void Révéler() { MajEtat(Etat & ~EEtat.À_l_envers); }
         //Actionner la roulette sur cette élément
-        public abstract bool Roulette(int delta);
+        public virtual bool Roulette(int delta) { Tourner(delta); return true; }
         public virtual void Tourner(int delta)
         {
-            delta /= 120;
-            delta += 8 + (int)((GC.A / 45.0f) + 0.5f);
-            delta %= 8;
-            GC.A = delta * 45.0f;
+            if (Etat.HasFlag(EEtat.RotationFixe) == false)
+            {
+                delta /= 120;
+                delta += 8 + (int)((GC.A / 45.0f) + 0.5f);
+                delta %= 8;
+                GC.A = delta * 45.0f;
+            }
         }
 
         public abstract bool Lier(XmlNode paq, Dictionary<string, Element> dElements);
@@ -268,11 +396,41 @@ namespace ModuleBOARD.Elements.Base
             return (-psz.X <= nmp.X && -psz.Y <= nmp.Y && nmp.X <= psz.X && nmp.Y <= psz.Y);
         }
 
+        /// <summary>
+        /// Mettre à jour l'élément numéro numElm par l'élément elm.
+        /// </summary>
+        /// <param name="numElm"></param>
+        /// <param name="elm"></param>
+        /// <returns></returns>
+        virtual public Element MettreAJour(int numElm, Element elm)
+        {
+            if (numElm == IdentifiantRéseau) return this;
+            else return null;
+        }
+
+        static private readonly string[][] libellé_état = new string[][]
+            {
+                new string[2]{ "Debout", "Couché" },
+                new string[2]{ "À l'endroit", "À l'envers" },
+                new string[2]{ "Position mobile", "Position fixe" },
+                new string[2]{ "Rotation mobile", "Rotation fixe" }
+            };
+
         virtual public ContextMenu Menu(Control ctrl)
         {
+            MenuItem[] metat = new MenuItem[libellé_état.Length];
+            for(int i=0;i< libellé_état.Length;++i)
+            {
+                EEtat eta = (EEtat)(1 << i);
+                if (Etat.HasFlag((EEtat)(1 << i))) metat[i] = new MenuItem(libellé_état[i][1], new EventHandler((o, e) => { Etat ^= eta; ctrl.Refresh(); }));
+                else metat[i] = new MenuItem(libellé_état[i][0], new EventHandler((o, e) => { Etat ^= eta; ctrl.Refresh(); }));
+            }
+
             ContextMenu cm = new ContextMenu();
-            cm.MenuItems.Add("Rotation", new MenuItem[]
-                {
+            if (Etat.HasFlag(EEtat.RotationFixe) == false)
+            {
+                cm.MenuItems.Add("Rotation", new MenuItem[]
+                    {
                     /*new MenuItem(" -45", new EventHandler((o,e) => { GC.A=(GC.A + (360.0f-45.0f)) % 360.0f; ctrl.Refresh(); })),
                     new MenuItem(" -90", new EventHandler((o,e) => { GC.A=(GC.A + (360.0f-90.0f)) % 360.0f; ctrl.Refresh(); })),
                     new MenuItem(" +45", new EventHandler((o,e) => { GC.A=(GC.A + 45.0f) % 360.0f; ctrl.Refresh(); })),
@@ -286,7 +444,9 @@ namespace ModuleBOARD.Elements.Base
                     new MenuItem(" +90", new EventHandler((o,e) => { GC.A=(90.0f); ctrl.Refresh(); })),
                     new MenuItem("+135", new EventHandler((o,e) => { GC.A=(135); ctrl.Refresh(); })),
                     new MenuItem("+180", new EventHandler((o,e) => { GC.A=(180.0f); ctrl.Refresh(); }))
-                });
+                    });
+            }
+            cm.MenuItems.Add("État", metat);
             return cm;
         }
 

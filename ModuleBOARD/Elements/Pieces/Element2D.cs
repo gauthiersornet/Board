@@ -31,7 +31,7 @@ namespace ModuleBOARD.Elements.Pieces
         public Element2D(string path, string file, PointF p, BibliothèqueImage bibliothèqueImage)
         {
             GC.P = p;
-            ElmImage = bibliothèqueImage.LoadImage(path, file);
+            ElmImage = bibliothèqueImage.ChargerImage(path, file);
         }
 
         public Element2D(string path, XmlNode paq, PointF p, BibliothèqueImage bibliothèqueImage)
@@ -40,7 +40,7 @@ namespace ModuleBOARD.Elements.Pieces
             GC.P.X += p.X;
             GC.P.Y += p.Y;
             string fileImg = paq.Attributes.GetNamedItem("img")?.Value;
-            ElmImage = bibliothèqueImage.LoadSImage(path, fileImg, paq, "ix", "iy", "iw", "ih");
+            ElmImage = bibliothèqueImage.ChargerSImage(path, fileImg, paq, "ix", "iy", "iw", "ih");
         }
 
         public override void Dessiner(RectangleF vue, float angle, Graphics g, PointF p)
@@ -56,23 +56,6 @@ namespace ModuleBOARD.Elements.Pieces
         }
 
         public bool IsValid() { return ElmImage != null; }
-
-        public override void Retourner()
-        {
-        }
-
-        public override void Cacher()
-        {
-        }
-
-        public override void Révéler()
-        {
-        }
-
-        public override bool Roulette(int delta)
-        {
-            return false;
-        }
 
         public override bool PutOnTop(Element elm)
         {

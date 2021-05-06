@@ -13,7 +13,7 @@ namespace ModuleBOARD.Elements.Pieces
 {
     public class Element2D2F : Element2D
     {
-        public bool Caché = true;
+        public bool Caché { get => EstDansEtat(EEtat.À_l_envers); set => AssignerEtat(EEtat.À_l_envers, value); }
         public Image Dos = default;
         //public SImage ElmImage = default;//Devant
 
@@ -30,16 +30,11 @@ namespace ModuleBOARD.Elements.Pieces
             Dos = elm.Dos;
         }
 
-        public Element2D2F(string path, XmlNode paq, PointF p, Element parent)
+        public Element2D2F(string path, XmlNode paq, PointF p, BibliothèqueImage bibliothèqueImage)
+            : base(path, paq, p, bibliothèqueImage)
         {
-            Parent = parent;
-            Load(paq);
-            GC.P.X = p.X;
-            GC.P.Y = p.Y;
-            if (paq.Attributes?.GetNamedItem("caché") != null)
-                Caché = true;
-            else if (paq.Attributes?.GetNamedItem("montré") != null)
-                Caché = false;
+            string fileDos = paq.Attributes.GetNamedItem("dos")?.Value;
+            Dos = bibliothèqueImage.ChargerSImage(path, fileDos, paq, "dx", "dy", "dw", "dh");
         }
 
         public override void Dessiner(RectangleF vue, float angle, Graphics g, PointF p)
@@ -55,27 +50,6 @@ namespace ModuleBOARD.Elements.Pieces
                 Dos.DessinerVide(vue, g, gc);
             }
             else ElmImage.Dessiner(vue, g, gc);
-        }
-
-        public override void Retourner()
-        {
-            Caché = !Caché;
-        }
-
-        public override void Cacher()
-        {
-            Caché = true;
-        }
-
-        public override void Révéler()
-        {
-            Caché = false;
-        }
-
-        public override bool Roulette(int delta)
-        {
-            Retourner();
-            return true;
         }
 
         override public object Clone()
