@@ -1,9 +1,11 @@
 ﻿using ModuleBOARD.Elements.Base;
 using ModuleBOARD.Elements.Lots;
+using ModuleBOARD.Réseau;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -31,6 +33,7 @@ namespace ModuleBOARD.Elements.Pieces
         public bool à_l_endroit { get => !EstDansEtat(EEtat.À_l_envers); set => AssignerEtat(EEtat.À_l_envers, !value); }
 
         public bool Couchée { get => EstDansEtat(EEtat.Couché); set => AssignerEtat(EEtat.Couché, value); }
+        public override EType ElmType { get => EType.Figurine; }
 
         public float Z { get; set; }
 
@@ -67,21 +70,26 @@ namespace ModuleBOARD.Elements.Pieces
             GeoCoord2D gc = GC;
             gc.P.X += p.X;
             gc.P.Y += p.Y;
-            gc.A = (gc.A + angle + (Couchée ? 180.0f : 0)) % 360.0f;
 
+            Matrix m = g.Transform;
             bool mirrorX = false, mirrorY = false;
-            Image img = model2_5D?.ObtenirImage(gc.A, à_l_endroit, out mirrorX, out mirrorY);
-            if(img != null)
+            Image img;
+            RectangleF rec = new RectangleF();
+            if (Couchée)
             {
-                Matrix m = g.Transform;
-                g.TranslateTransform(gc.P.X, gc.P.Y);
-                gc.P.X = 0.0f;
-                gc.P.Y = 0.0f;
-                g.RotateTransform(-angle);
-                RectangleF rec = new RectangleF();
+                //gc.A = (gc.A + angle + 180.0f) % 360.0f;
+                gc.A = (gc.A + 180.0f) % 360.0f;
 
-                if (Couchée)
+                //img = model2_5D?.ObtenirImage(0.0f , à_l_endroit, out mirrorX, out mirrorY);
+                img = model2_5D?.ObtenirImage(gc.A, à_l_endroit, out mirrorX, out mirrorY);
+                if (img != null)
                 {
+                    g.TranslateTransform(gc.P.X, gc.P.Y);
+                    gc.P.X = 0.0f;
+                    gc.P.Y = 0.0f;
+                    //g.RotateTransform(gc.A);
+                    g.RotateTransform(-angle);
+
                     gc.A = 90.0f;
                     if (mirrorX)
                     {
@@ -104,8 +112,20 @@ namespace ModuleBOARD.Elements.Pieces
                         rec.Height = img.Height;
                     }
                 }
-                else
+                img.Dessiner(vue, g, gc, rec);
+            }
+            else
+            {
+                gc.A = (gc.A + angle) % 360.0f;
+
+                img = model2_5D?.ObtenirImage(gc.A, à_l_endroit, out mirrorX, out mirrorY);
+                if (img != null)
                 {
+                    g.TranslateTransform(gc.P.X, gc.P.Y);
+                    gc.P.X = 0.0f;
+                    gc.P.Y = 0.0f;
+                    g.RotateTransform(-angle);
+
                     gc.A = 0.0f;
                     if (mirrorX)
                     {
@@ -129,8 +149,8 @@ namespace ModuleBOARD.Elements.Pieces
                     }
                 }
                 img.Dessiner(vue, g, gc, rec);
-                g.Transform = m;
             }
+            g.Transform = m;
         }
 
         public void DessinerFigurine(RectangleF vue, float angle, Graphics g, PointF p)
@@ -151,7 +171,9 @@ namespace ModuleBOARD.Elements.Pieces
             mp.Y -= GC.P.Y/* - (psz.Y / 2.0f)*/;
 
             Matrix m = new Matrix();
-            m.Rotate(-angle);
+            //m.Rotate(Couchée ? GC.A : - angle);
+            if(Couchée) m.Rotate(90.0f - angle);
+            else m.Rotate(- angle);
             PointF nmp = new PointF
                 (
                     mp.X * m.Elements[0] + mp.Y * m.Elements[1],
@@ -184,7 +206,6 @@ namespace ModuleBOARD.Elements.Pieces
         {
             int ia = (int)(((GC.A % 360.0f) / 45.0f) + 0.5f);
 
-            delta /= 120;
             if (delta > 0) ia = (ia + delta) % 8;
             else if(delta < 0) ia = (ia + (1 - 8) * delta) % 8;
 
@@ -218,5 +239,33 @@ namespace ModuleBOARD.Elements.Pieces
             else cm.MenuItems.Add("Coucher", new EventHandler((o, e) => { this.Couchée = true; ctrl.Refresh(); }));
             return cm;
         }*/
+        override public ContextMenu Menu(IBoard ctrl)
+        {
+            ContextMenu cm = base.Menu(ctrl);
+            if (cm == null) cm = new ContextMenu();
+
+            cm.MenuItems.AddRange(new MenuItem[]
+                    {
+                        new MenuItem("Mettre en paquet", new EventHandler((o,e) => {ctrl.MettreEnPaquet(this); ctrl.Refresh(); })),
+                    });
+            return cm;
+        }
+
+        public Figurine(Stream stream, IRessourcesDésérialiseur resscDes)
+            : base(stream, resscDes)
+        {
+            model2_5D = resscDes.RécupérerModel(stream);
+        }
+
+        override public void Serialiser(Stream stream, ref int gidr)
+        {
+            base.Serialiser(stream, ref gidr);
+            stream.SerialiserObject(model2_5D?.Tag as string ?? "", typeof(string));
+        }
+
+        override public void SerialiserTout(Stream stream, ref int gidr, ISet<int> setIdRéseau)
+        {
+            base.SerialiserTout(stream, ref gidr, setIdRéseau);
+        }
     }
 }

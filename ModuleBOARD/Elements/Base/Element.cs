@@ -1,10 +1,12 @@
 ﻿using ModuleBOARD.Elements.Lots;
 using ModuleBOARD.Elements.Lots.Piles;
 using ModuleBOARD.Elements.Pieces;
+using ModuleBOARD.Réseau;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -17,7 +19,20 @@ namespace ModuleBOARD.Elements.Base
      * Taille standard d'une image : 224*312 pixels
     */
 
-    public abstract class Element : IComparable, ICloneable
+    public interface IBoard
+    {
+        void Refresh();
+        void ChangerEtatElément(Element relem, Element.EEtat etat);
+        void RangerVersParent(Element parent);
+        void Mélanger(Element elm);
+        void DéfausserElement(Element relem);
+        void ReMettreDansPioche(Défausse défss);
+        void MettreEnPioche(Element relem);
+        void MettreEnPaquet(Element relem);
+        void CréerLaDéfausse(Pioche pioch);
+    }
+
+    public abstract class Element : IComparable, ICloneable, IBinSerialisable
     {
         /*static Element Trouver(string elmName)
         {
@@ -51,6 +66,7 @@ namespace ModuleBOARD.Elements.Base
         {
             DElements.Clear();
         }*/
+
         /// <summary>
         /// Flag d'état
         /// </summary>
@@ -61,6 +77,7 @@ namespace ModuleBOARD.Elements.Base
             À_l_envers = (1 << 1),
             PositionFixe = (1 << 2),
             RotationFixe = (1 << 3),
+            NonRetournable = (1 << 4),
         };
 
         [Flags]
@@ -68,20 +85,27 @@ namespace ModuleBOARD.Elements.Base
         {
             Déplacer = (1 << 2),
             Tourner = (1 << 3),
+            Retourner = (1 << 4),
             Roulette = (1 << 8),
         };
 
         public int IdentifiantRéseau = 0; //Inférieur à zéro alors élément local, sinon élément global
-        public GeoCoord2D GC = new GeoCoord2D(0.0f, 0.0f, 180.0f, 0.0f);
+        public GeoCoord2D GC = new GeoCoord2D(0.0f, 0.0f, 100.0f, 0.0f);
         public sbyte Ordre = 0; // bottom < top
         private EEtat Etat;
+        public Element Parent;
         //public PointF P = default;
         //public float ElemEchelle = 180.0f;//Basé sur le plus petit côté
+
         public abstract PointF Size { get; }
-        public Element Parent;
-        public virtual bool EstParent { get => false; }
+        //public virtual bool EstParent { get => false; }
+        public virtual EType ElmType { get => EType.Element; }
+        public virtual int ElmId { get => IdentifiantRéseau; set => IdentifiantRéseau = value; }
 
         protected Element() { /*Etat = (EEtat)0;*/ }
+
+        protected Element(int idRez) { IdentifiantRéseau = idRez; }
+
         protected Element(Element elm)
         {
             GC = elm.GC;
@@ -90,9 +114,9 @@ namespace ModuleBOARD.Elements.Base
             Parent = elm.Parent;
         }
 
-        static public Element Charger(string path, XmlNode xmln, Dictionary<string, Element> _dElements, BibliothèqueImage bibliothèqueImage, BibliothèqueModel bibliothèqueModel)
+        static public Element Charger(string path, XmlNode xmln, PointF pZero, Dictionary<string, Element> _dElements, BibliothèqueImage bibliothèqueImage, BibliothèqueModel bibliothèqueModel)
         {
-            PointF pZero = new PointF(0.0f, 0.0f);
+            if (_dElements == null) _dElements = new Dictionary<string, Element>();
             Element elm;
             switch (xmln.Name.ToUpper().Trim())
             {
@@ -148,7 +172,7 @@ namespace ModuleBOARD.Elements.Base
 
             if (att?.GetNamedItem("caché") != null) nvEtat |= EEtat.À_l_envers;
             else if (att?.GetNamedItem("montré") != null) nvEtat &= ~EEtat.À_l_envers;
-            else if (this is Figurine) nvEtat &= ~EEtat.À_l_envers;
+            else if (this is IFigurine) nvEtat &= ~EEtat.À_l_envers;
             else nvEtat |= EEtat.À_l_envers;
 
             if (att?.GetNamedItem("couché") != null) nvEtat |= EEtat.Couché;
@@ -167,6 +191,13 @@ namespace ModuleBOARD.Elements.Base
             {
                 if (strRottype == "fixe") nvEtat |= EEtat.RotationFixe;
                 else if (strRottype == "mobile") nvEtat &= ~EEtat.RotationFixe;
+            }
+
+            string strRetourtype = att?.GetNamedItem("retournable")?.Value;
+            if (strRetourtype != null)
+            {
+                if (strRetourtype == "non") nvEtat |= EEtat.NonRetournable;
+                else if (strRetourtype == "oui") nvEtat &= ~EEtat.NonRetournable;
             }
 
             MajEtat(nvEtat);
@@ -191,18 +222,6 @@ namespace ModuleBOARD.Elements.Base
         /// <returns></returns>
         public virtual (Element, Element) MousePickAvecContAt(PointF mp, float angle, EPickUpAction action = 0)
         {
-            /*SImage SImg;
-            if (Caché) SImg = Dos.IsSizeValid() ? Dos : Devant;
-            else SImg = Devant.IsSizeValid() ? Devant : Dos ;
-
-            if (SImg.IsSizeValid())
-            {
-                if (P.X <= mp.X && P.Y <= mp.Y && mp.X < (int)(GC.P.X + GC.E)
-                    && mp.Y < (int)(P.Y + (SImg.Rect.Height * GC.E) / SImg.Rect.Width))
-                    return this;
-                else return null;
-            }
-            else return null;*/
             if (action.HasFlag(EPickUpAction.Roulette)) action |= EPickUpAction.Tourner;
             if (!((EEtat)action != 0 && Etat.HasFlag((EEtat)action)) && IsAt(mp, angle)) return (this, null);
             else return (null, null);
@@ -211,6 +230,13 @@ namespace ModuleBOARD.Elements.Base
         public virtual Element MousePickAt(int netId)
         {
             if (netId == IdentifiantRéseau) return this;
+            else return null;
+        }
+
+        public virtual List<(Element, Element)> MousePickAllAvecContAt(PointF mp, float angle, EPickUpAction action = 0)
+        {
+            if (action.HasFlag(EPickUpAction.Roulette)) action |= EPickUpAction.Tourner;
+            if (!((EEtat)action != 0 && Etat.HasFlag((EEtat)action)) && IsAt(mp, angle)) return new List<(Element, Element)>() { (this, null) };
             else return null;
         }
 
@@ -224,33 +250,26 @@ namespace ModuleBOARD.Elements.Base
         /// <returns></returns>
         public virtual Element MousePickAt(PointF mp, float angle, EPickUpAction action = 0)
         {
-            /*SImage SImg;
-            if (Caché) SImg = Dos.IsSizeValid() ? Dos : Devant;
-            else SImg = Devant.IsSizeValid() ? Devant : Dos ;
-
-            if (SImg.IsSizeValid())
-            {
-                if (P.X <= mp.X && P.Y <= mp.Y && mp.X < (int)(GC.P.X + GC.E)
-                    && mp.Y < (int)(P.Y + (SImg.Rect.Height * GC.E) / SImg.Rect.Width))
-                    return this;
-                else return null;
-            }
-            else return null;*/
             if (action.HasFlag(EPickUpAction.Roulette)) action |= EPickUpAction.Tourner;
             if (!((EEtat)action != 0 && Etat.HasFlag((EEtat)action)) && IsAt(mp, angle)) return this;
             else return null;
         }
-        public virtual Element MousePioche()
+
+        public virtual List<Element> MousePickAllAt(PointF mp, float angle, EPickUpAction action = 0)
         {
-            /*if (SImg.IsSizeValid())
-            {
-                if (P.X <= mp.X && P.Y <= mp.Y && mp.X < (int)(P.X + ElemEchelle)
-                    && mp.Y < (int)(P.Y + (SImg.Rect.Height * ElemEchelle) / SImg.Rect.Width))
-                    return this;
-                else return null;
-            }
-            else return null;*/
+            if (action.HasFlag(EPickUpAction.Roulette)) action |= EPickUpAction.Tourner;
+            if (!((EEtat)action != 0 && Etat.HasFlag((EEtat)action)) && IsAt(mp, angle)) return new List<Element>() { this };
+            else return null;
+        }
+
+        public virtual Element MousePioche(int index = int.MaxValue)
+        {
             return this;
+        }
+
+        public virtual int GetPiocheIndex()
+        {
+            return int.MaxValue;
         }
         //public virtual Element MousePiocheAt(PointF mp, float angle)
         //{
@@ -314,6 +333,7 @@ namespace ModuleBOARD.Elements.Base
         }
         //Retrouner l'élément visible/caché
         virtual public void MajEtat(EEtat nouvEtat) { Etat = nouvEtat; }
+        
         public void MettreEtat(EEtat etat)
         {
             MajEtat(Etat | etat);
@@ -343,6 +363,7 @@ namespace ModuleBOARD.Elements.Base
         }
 
         public void Retourner() { MajEtat(Etat ^ EEtat.À_l_envers); }
+        public EEtat RetournerEtat() { return Etat ^ EEtat.À_l_envers; }
         //Cacher l'élément
         public void Cacher() { MajEtat(Etat | EEtat.À_l_envers); }
         //Montrer l'élément
@@ -353,10 +374,11 @@ namespace ModuleBOARD.Elements.Base
         {
             if (Etat.HasFlag(EEtat.RotationFixe) == false)
             {
-                delta /= 120;
-                delta += 8 + (int)((GC.A / 45.0f) + 0.5f);
-                delta %= 8;
-                GC.A = delta * 45.0f;
+                /*delta += 8 + (int)((GC.A / 45.0f) + 0.5f);
+                delta %= 8;*/
+                int oldA = (int)(GC.A + 0.5f);
+                int newA = oldA + delta; 
+                GC.A = GeoCoord2D.AngleFromToAimant45(oldA, newA); // delta * 45.0f;
             }
         }
 
@@ -397,14 +419,19 @@ namespace ModuleBOARD.Elements.Base
         }
 
         /// <summary>
-        /// Mettre à jour l'élément numéro numElm par l'élément elm.
+        /// Mettre à jour l'objet
         /// </summary>
         /// <param name="numElm"></param>
         /// <param name="elm"></param>
         /// <returns></returns>
-        virtual public Element MettreAJour(int numElm, Element elm)
+        virtual public object MettreAJour(object obj)
         {
-            if (numElm == IdentifiantRéseau) return this;
+            if (obj is Element)
+            {
+                Element elm = obj as Element;
+                if (elm.IdentifiantRéseau == IdentifiantRéseau) return this;
+                else return null;
+            }
             else return null;
         }
 
@@ -413,24 +440,17 @@ namespace ModuleBOARD.Elements.Base
                 new string[2]{ "Debout", "Couché" },
                 new string[2]{ "À l'endroit", "À l'envers" },
                 new string[2]{ "Position mobile", "Position fixe" },
-                new string[2]{ "Rotation mobile", "Rotation fixe" }
+                new string[2]{ "Rotation mobile", "Rotation fixe" },
+                new string[2]{ "Retournable", "Non Retournable" }
             };
 
-        virtual public ContextMenu Menu(Control ctrl)
+        virtual public ContextMenu Menu(IBoard ctrl)
         {
-            MenuItem[] metat = new MenuItem[libellé_état.Length];
-            for(int i=0;i< libellé_état.Length;++i)
-            {
-                EEtat eta = (EEtat)(1 << i);
-                if (Etat.HasFlag((EEtat)(1 << i))) metat[i] = new MenuItem(libellé_état[i][1], new EventHandler((o, e) => { Etat ^= eta; ctrl.Refresh(); }));
-                else metat[i] = new MenuItem(libellé_état[i][0], new EventHandler((o, e) => { Etat ^= eta; ctrl.Refresh(); }));
-            }
-
             ContextMenu cm = new ContextMenu();
             if (Etat.HasFlag(EEtat.RotationFixe) == false)
             {
                 cm.MenuItems.Add("Rotation", new MenuItem[]
-                    {
+                {
                     /*new MenuItem(" -45", new EventHandler((o,e) => { GC.A=(GC.A + (360.0f-45.0f)) % 360.0f; ctrl.Refresh(); })),
                     new MenuItem(" -90", new EventHandler((o,e) => { GC.A=(GC.A + (360.0f-90.0f)) % 360.0f; ctrl.Refresh(); })),
                     new MenuItem(" +45", new EventHandler((o,e) => { GC.A=(GC.A + 45.0f) % 360.0f; ctrl.Refresh(); })),
@@ -444,9 +464,22 @@ namespace ModuleBOARD.Elements.Base
                     new MenuItem(" +90", new EventHandler((o,e) => { GC.A=(90.0f); ctrl.Refresh(); })),
                     new MenuItem("+135", new EventHandler((o,e) => { GC.A=(135); ctrl.Refresh(); })),
                     new MenuItem("+180", new EventHandler((o,e) => { GC.A=(180.0f); ctrl.Refresh(); }))
-                    });
+                });
+            }
+
+            MenuItem[] metat = new MenuItem[libellé_état.Length];
+            for (int i = 0; i < libellé_état.Length; ++i)
+            {
+                EEtat eta = (EEtat)(1 << i);
+                if (Etat.HasFlag((EEtat)(1 << i))) metat[i] = new MenuItem(libellé_état[i][1], new EventHandler((o, e) => { ctrl.ChangerEtatElément(this, Etat ^ eta); }));
+                else metat[i] = new MenuItem(libellé_état[i][0], new EventHandler((o, e) => { ctrl.ChangerEtatElément(this, Etat ^ eta); }));
             }
             cm.MenuItems.Add("État", metat);
+            cm.MenuItems.Add("-");
+
+            if(Parent != null)
+                cm.MenuItems.Add(new MenuItem("Défausser", new EventHandler((o, e) => { ctrl.DéfausserElement(this); ctrl.Refresh(); })));
+
             return cm;
         }
 
@@ -463,16 +496,17 @@ namespace ModuleBOARD.Elements.Base
         abstract public object Clone();
 
         /*{
-get
-{
-MenuItem[] mnItms = new MenuItem[]
-{
-  new MenuItem("Coco")
-};
-ContextMenu cm = new ContextMenu(mnItms);
-return cm;
-}
-}*/
+            get
+            {
+            MenuItem[] mnItms = new MenuItem[]
+            {
+              new MenuItem("Coco")
+            };
+            ContextMenu cm = new ContextMenu(mnItms);
+            return cm;
+            }
+         }*/
+
         public override bool Equals(object obj)
         {
             if (Object.ReferenceEquals(this, obj)) return true;
@@ -484,5 +518,39 @@ return cm;
             else return false;
         }
 
+        public bool IdRéseauVacant(int gidr)
+        {
+            return IdentifiantRéseau.IdRéseauVacant(gidr);
+        }
+
+        public Element(Stream stream, IRessourcesDésérialiseur resscDes)
+        {
+            IdentifiantRéseau = BitConverter.ToInt32(stream.GetBytes(4), 0);
+            resscDes.NouvelleElement(this);
+            GC = stream.ReadGeoCoord2D();
+            Ordre = (sbyte)stream.ReadByte();
+            Etat = (EEtat)stream.ReadByte();
+            Parent = resscDes.Rechercher(BitConverter.ToInt32(stream.GetBytes(4), 0)) as Element;
+        }
+
+        virtual public void Serialiser(Stream stream, ref int gidr)
+        {
+            stream.WriteByte((byte)ElmType);
+            if (IdRéseauVacant(gidr)) IdentifiantRéseau = gidr.IdRéseauSuivant();
+            stream.Serialiser(BitConverter.GetBytes(IdentifiantRéseau));
+            stream.SerialiserObject(GC);
+            stream.WriteByte((byte)Ordre);
+            stream.WriteByte((byte)Etat);
+            stream.SerialiserRefElement(Parent, ref gidr);
+        }
+
+        virtual public void SerialiserTout(Stream stream, ref int gidr, ISet<int> setIdRéseau)
+        {
+            if (IdRéseauVacant(gidr)) IdentifiantRéseau = gidr.IdRéseauSuivant();
+            //setIdRéseau.Add(IdentifiantRéseau);
+            //if (Parent != null && Parent.IdRéseauVacant(gidr)) stream.SerialiserObjectTout(Parent, ref gidr);
+            stream.SerialiserTout(Parent, ref gidr, setIdRéseau);
+            Serialiser(stream, ref gidr);
+        }
     }
 }

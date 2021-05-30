@@ -1,7 +1,10 @@
 ﻿using ModuleBOARD.Elements.Base;
+using ModuleBOARD.Elements.Pieces;
+using ModuleBOARD.Réseau;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -14,18 +17,33 @@ namespace ModuleBOARD.Elements.Lots.Piles
     public class Pioche : Pile
     {
         public Défausse Défausse = null;
+        public override EType ElmType { get => EType.Pioche; }
 
         Pioche() { }
+
+        public Pioche(int idREz) : base(idREz) { }
+
+        public Pioche(Element2D element2D) : base(element2D) { MettreAJourEtat(); }
+
+        public Pioche(Element2D2F element2D2F) : base(element2D2F) { MettreAJourEtat(); }
 
         public Pioche(Pioche elm)
             : base(elm)
         {
             Défausse = elm.Défausse;
+            MettreAJourEtat();
         }
 
         public Pioche(string path, XmlNode paq, PointF p, BibliothèqueImage bibliothèqueImage)
             :base(path, paq, p, bibliothèqueImage)
         {
+        }
+
+        override public object MettreAJour(object obj)
+        {
+            if(Défausse != null && obj is Défausse && (obj as Défausse).IdentifiantRéseau == Défausse.IdentifiantRéseau)
+                Défausse = obj as Défausse;
+            return base.MettreAJour(obj);
         }
 
         /*public override Element MousePiocheAt(PointF mp, float angle)
@@ -51,11 +69,12 @@ namespace ModuleBOARD.Elements.Lots.Piles
             }
         }
 
-        override public ContextMenu Menu(Control ctrl)
+        override public ContextMenu Menu(IBoard ctrl)
         {
             ContextMenu cm = base.Menu(ctrl);
             if (cm == null) cm = new ContextMenu();
             if(Défausse != null)cm.MenuItems.Add("Récupérer de la défausse", new EventHandler((o, e) => { RécupérerDeLaDéfausse(); ctrl.Refresh(); }));
+            else cm.MenuItems.Add("Créer la défausse", new EventHandler((o, e) => { ctrl.CréerLaDéfausse(this); }));
             return cm;
         }
 
@@ -82,7 +101,11 @@ namespace ModuleBOARD.Elements.Lots.Piles
         {
             if (elm == this)
             {
-                if (Défausse != null) Défausse.SuppressionPioche(this);
+                if (Défausse != null)
+                {
+                    Défausse.SuppressionPioche(this);
+                    Défausse = null;
+                }
                 return this;
             }
             else
@@ -97,6 +120,24 @@ namespace ModuleBOARD.Elements.Lots.Piles
             return new Pioche(this);
         }
 
+        public Pioche(Stream stream, IRessourcesDésérialiseur resscDes)
+            : base(stream, resscDes)
+        {
+            //Défausse = resscDes.Rechercher(BitConverter.ToInt32(stream.GetBytes(4), 0)) as Défausse;
+            Défausse = resscDes.RetrouverDéfausse(stream);
+        }
+
+        override public void Serialiser(Stream stream, ref int gidr)
+        {
+            base.Serialiser(stream, ref gidr);
+            stream.SerialiserRefElement(Défausse, ref gidr);
+        }
+
+        override public void SerialiserTout(Stream stream, ref int gidr, ISet<int> setIdRéseau)
+        {
+            stream.SerialiserTout(Défausse, ref gidr, setIdRéseau);
+            base.SerialiserTout(stream, ref gidr, setIdRéseau);
+        }
     }
 
     //public class DéfaussePioche : Pile
@@ -131,14 +172,6 @@ namespace ModuleBOARD.Elements.Lots.Piles
     //            Images = null;
     //            Pioche.AddRange(imgs);
     //        }
-    //    }
-
-    //    override public ContextMenu Menu(Control ctrl)
-    //    {
-    //        ContextMenu cm = base.Menu(ctrl);
-    //        if (cm == null) cm = new ContextMenu();
-    //        if(Pioche != null) cm.MenuItems.Add("Remettre dans la pioche", new EventHandler((o, e) => { MettreDansPioche(); ctrl.Refresh(); }));
-    //        return cm;
     //    }
 
     //    public override bool Lier(XmlNode paq, Dictionary<string, Element> dElements)

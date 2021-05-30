@@ -21,12 +21,12 @@ namespace ModuleBOARD.Elements.Base
             if (img != null)
             {
                 float sclRatio = GC.E / Math.Min(img.Width, img.Height);
-
                 Matrix m = g.Transform;
                 g.TranslateTransform(GC.P.X, GC.P.Y);
                 g.RotateTransform(GC.A);
                 g.ScaleTransform(sclRatio, sclRatio);
-                g.DrawImage(img, dRect, new Rectangle(0, 0, img.Width, img.Height), GraphicsUnit.Pixel);
+                //g.DrawImage(img, dRect, new Rectangle(0, 0, img.Width, img.Height), GraphicsUnit.Pixel);
+                g.DrawImage(img, dRect);
                 res = g.Transform;
                 g.Transform = m;
                 //g.FillRectangle(new SolidBrush(Color.Black), drect);
@@ -51,7 +51,8 @@ namespace ModuleBOARD.Elements.Base
                 g.TranslateTransform(GC.P.X, GC.P.Y);
                 g.RotateTransform(GC.A);
                 g.ScaleTransform(sclRatio, sclRatio);
-                g.DrawImage(img, dRect, new Rectangle(0, 0, img.Width, img.Height), GraphicsUnit.Pixel);
+                //g.DrawImage(img, dRect, new Rectangle(0, 0, img.Width, img.Height), GraphicsUnit.Pixel);
+                g.DrawImage(img, dRect);
                 res = g.Transform;
                 g.Transform = m;
                 //g.FillRectangle(new SolidBrush(Color.Black), drect);

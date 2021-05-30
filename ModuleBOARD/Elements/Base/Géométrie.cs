@@ -111,6 +111,31 @@ namespace ModuleBOARD.Elements.Base
             }
             else return default;
         }
+
+        static public bool EstDansIntervalStricte(int c, int iA, int iB)
+        {
+            int a = Math.Min(iA, iB);
+            int b = Math.Max(iA, iB);
+            return (a < c && c < b);
+        }
+
+        static public int AngleFromToAimant45(int angFrom, int angTo)
+        {
+            int a = Math.Min(angFrom, angTo);
+            int b = Math.Max(angFrom, angTo);
+
+            for (int ang = -360; ang <= 360; ang += 45)
+                if (a < ang && ang < b)
+                {
+                    ang %= 360;
+                    if (ang < 0) ang = 360 + ang;
+                    return ang;
+                }
+
+            angTo %= 360;
+            if (angTo < 0) angTo = 360 + angTo;
+            return angTo;
+        }
     }
 
     public struct GeoVue

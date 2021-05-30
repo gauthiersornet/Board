@@ -1,9 +1,11 @@
 ﻿using ModuleBOARD.Elements.Base;
 using ModuleBOARD.Elements.Lots.Piles;
 using ModuleBOARD.Elements.Pieces;
+using ModuleBOARD.Réseau;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -19,8 +21,11 @@ namespace ModuleBOARD.Elements.Lots
 
         private float ancienAngleDessin = 0.0f;
 
-        public override bool EstParent { get => true; }
+        //public override bool EstParent { get => true; }
+        public override EType ElmType { get => EType.Groupe; }
         public bool EstVide{ get => (LstElements == null || !LstElements.Any()) && (LstFigurines == null || !LstFigurines.Any()); }
+
+        override public int ElmId { get => 0; set { } }
 
         public override PointF Size
         { 
@@ -60,7 +65,7 @@ namespace ModuleBOARD.Elements.Lots
             LstFigurines = new List<IFigurine>();
             foreach (XmlNode xmln in paq.ChildNodes)
             {
-                Element elm = Charger(path, xmln, _dElements, bibliothèqueImage, bibliothèqueModel);
+                Element elm = Charger(path, xmln, new PointF(0.0f, 0.0f), _dElements, bibliothèqueImage, bibliothèqueModel);
                 /*switch (xmln.Name.ToUpper().Trim())
                 {
                     case "GROUPE": elm = new Groupe(path, xmln, pZero, _dElements, bibliothèqueImage, bibliothèqueModel); break;
@@ -273,6 +278,45 @@ namespace ModuleBOARD.Elements.Lots
             return (null, null);
         }
 
+        public override List<(Element, Element)> MousePickAllAvecContAt(PointF mp, float angle, EPickUpAction action = 0)
+        {
+            mp.X -= GC.P.X;
+            mp.Y -= GC.P.Y;
+            List<(Element, Element)> res = null;
+
+            if (LstFigurines != null)
+            {
+                for (int i = 0; i < LstFigurines.Count; ++i)
+                    if (LstFigurines[i] != null)
+                    {
+                        List<(Element, Element)> lst = (LstFigurines[i] as Element).MousePickAllAvecContAt(mp, angle, action);
+                        if (lst != null)
+                        {
+                            lst.ForEach(e => { if (e.Item1 == LstFigurines[i]) e.Item2 = this; });
+                            if (res == null) res = lst;
+                            else res.AddRange(lst);
+                        }
+                    }
+            }
+
+            if (LstElements != null)
+            {
+                for (int i = 0; i < LstElements.Count; ++i)
+                    if (LstElements[i] != null)
+                    {
+                        List<(Element, Element)> lst = LstElements[i].MousePickAllAvecContAt(mp, angle, action);
+                        if (lst != null)
+                        {
+                            lst.ForEach(e => { if (e.Item1 == LstFigurines[i]) e.Item2 = this; });
+                            if (res == null) res = lst;
+                            else res.AddRange(lst);
+                        }
+                    }
+            }
+
+            return res;
+        }
+
         public override Element MousePickAt(int netId)
         {
             Element elm = base.MousePickAt(netId);
@@ -330,6 +374,43 @@ namespace ModuleBOARD.Elements.Lots
             return null;
         }
 
+        public override List<Element> MousePickAllAt(PointF mp, float angle, EPickUpAction action = 0)
+        {
+            mp.X -= GC.P.X;
+            mp.Y -= GC.P.Y;
+            List<Element> res = null;
+
+            if (LstFigurines != null)
+            {
+                for (int i = 0; i < LstFigurines.Count; ++i)
+                    if (LstFigurines[i] != null)
+                    {
+                        List<Element> felm = (LstFigurines[i] as Element).MousePickAllAt(mp, angle, action);
+                        if (felm != null)
+                        {
+                            if (res == null) res = felm;
+                            else res.AddRange(felm);
+                        }
+                    }
+            }
+
+            if (LstElements != null)
+            {
+                for (int i = 0; i < LstElements.Count; ++i)
+                    if (LstElements[i] != null)
+                    {
+                        List<Element> felm = LstElements[i].MousePickAllAt(mp, angle, action);
+                        if (felm != null)
+                        {
+                            if (res == null) res = felm;
+                            else res.AddRange(felm);
+                        }
+                    }
+            }
+
+            return res;
+        }
+
         /*public override Element MousePiocheAt(PointF mp, float angle)
         {
             mp.X -= GC.P.X;
@@ -384,8 +465,7 @@ namespace ModuleBOARD.Elements.Lots
 
         public override Element ElementLaché(Element elm)
         {
-            if (elm is Figurine == false) Add(elm);
-            if(elm is IFigurine) AddFigurine(elm as IFigurine);
+            Add(elm);
             return null;
         }
 
@@ -393,7 +473,7 @@ namespace ModuleBOARD.Elements.Lots
         {
             if (elm != null)
             {
-                if (elm is Groupe) Fusionner(elm as Groupe);
+                if (elm.ElmType == EType.Groupe) Fusionner(elm as Groupe);
                 else
                 {
                     elm.GC.P.X -= GC.P.X;
@@ -480,7 +560,7 @@ namespace ModuleBOARD.Elements.Lots
             return null;
         }
 
-        public Element Add(Element elm)
+        private Element Add(Element elm)
         {
             if (elm != null && (elm is Groupe) == false)
             {
@@ -489,7 +569,6 @@ namespace ModuleBOARD.Elements.Lots
                 if (elm is IFigurine)
                 {
                     AddFigurine(elm as IFigurine);
-
                 }
                 if (elm is Figurine == false)
                 {
@@ -634,7 +713,10 @@ namespace ModuleBOARD.Elements.Lots
 
         private void PutTop(int idx)
         {
-            PutAt(idx, 0);
+            if (0<= idx && idx < LstElements.Count)
+            {
+                PutAt(idx, trouverOrdreIdx(LstElements[idx].Ordre));
+            }
         }
 
         private bool PutTop(Element elm)
@@ -923,23 +1005,35 @@ namespace ModuleBOARD.Elements.Lots
         /// <param name="numElm"></param>
         /// <param name="elm"></param>
         /// <returns></returns>
-        override public Element MettreAJour(int numElm, Element elm)
+        override public object MettreAJour(object obj)
         {
-            if (numElm == IdentifiantRéseau) return elm;
-            else
+            if (obj is Element)
             {
-                Element res = null;
-                for (int i = 0; res == null && i < LstElements.Count; ++i)
+                Element elm = obj as Element;
+                if (elm.IdentifiantRéseau == IdentifiantRéseau) return elm;
+                else
                 {
-                    Element e = LstElements[i];
-                    if (e != null)
+                    object res = null;
+                    for (int i = 0; res == null && i < LstElements.Count; ++i)
                     {
-                        res = e.MettreAJour(numElm, elm);
-                        if (e == res) LstElements[i] = elm;
+                        Element e = LstElements[i];
+                        if (e != null)
+                        {
+                            res = e.MettreAJour(elm);
+                            if (e == res) LstElements[i] = elm;
+                        }
                     }
+                    return res;
                 }
-                return res;
             }
+            else if (obj is Image)
+            {
+                Image img = obj as Image;
+                if (LstElements != null)
+                    LstElements.ForEach(e => e?.MettreAJour(img));
+                return base.MettreAJour(obj);
+            }
+            else return base.MettreAJour(obj);
         }
 
         public override Element Suppression(Element elm)
@@ -965,8 +1059,11 @@ namespace ModuleBOARD.Elements.Lots
                         else e.Suppression(elm);
                         if (re != null) return re;*/
                     }
-                    if (isOwn) LstFigurines.Remove(re as IFigurine);
-                    return re;
+                    if (re != null)
+                    {
+                        if (isOwn) LstFigurines.Remove(re as IFigurine);
+                        return re;
+                    }
                 }
                 if (LstElements != null && LstElements.Count > 0)
                 {
@@ -984,14 +1081,17 @@ namespace ModuleBOARD.Elements.Lots
                         else e.Suppression(elm);
                         if (re != null) return re;*/
                     }
-                    if (isOwn) LstElements.Remove(re);
-                    return re;
+                    if (re != null)
+                    {
+                        if (isOwn) LstElements.Remove(re);
+                        return re;
+                    }
                 }
                 return null;
             }
         }
 
-        public void Netoyer()
+        public void Nétoyer()
         {
             if(LstElements != null)
             {
@@ -1039,5 +1139,70 @@ namespace ModuleBOARD.Elements.Lots
             else return false;
         }
 
+
+        public Groupe(Stream stream, IRessourcesDésérialiseur resscDes)
+            : base(stream, resscDes)
+        {
+            /*
+                private List<Element> LstElements = null;
+                private List<IFigurine> LstFigurines = null;
+            */
+            Element elm;
+
+            int nbe = stream.ReadInt();
+            if (nbe > 0)
+            {
+                LstElements = new List<Element>(nbe);
+                for (int i = 0; i < nbe; ++i)
+                {
+                    elm = resscDes.RetrouverObject(stream) as Element;
+                    if (elm == null) throw new Exception("Désérialisation d'un groupe avec un élément vide !");
+                    LstElements.Add(elm);
+                }
+            }
+            else LstElements = null;
+            elm = resscDes.RetrouverObject(stream) as Element;
+            if (elm != null) throw new Exception("Désérialisation d'un groupe incorrecte !");
+            nbe = stream.ReadInt();
+            if (nbe > 0)
+            {
+                LstFigurines = new List<IFigurine>(nbe);
+                for (int i = 0; i < nbe; ++i)
+                {
+                    elm = resscDes.RetrouverObject(stream) as Element;
+                    if (elm == null) throw new Exception("Désérialisation d'un groupe avec un élément vide !");
+                    LstFigurines.Add(elm as IFigurine);
+                }
+            }
+            else LstFigurines = null;
+            elm = resscDes.RetrouverObject(stream) as Element;
+            if (elm != null) throw new Exception("Désérialisation d'un groupe incorrecte !");
+        }
+
+        override public void Serialiser(Stream stream, ref int gidr)
+        {
+            base.Serialiser(stream, ref gidr);
+            /*
+                private List<Element> LstElements = null;
+                private List<IFigurine> LstFigurines = null;
+            */
+            stream.SerialiserObject(LstElements?.Count ?? 0);
+            if (LstElements != null)
+                foreach (Element e in LstElements) stream.SerialiserRefElement(e, ref gidr);
+            stream.SerialiserObject(0);//Marque la fin
+            stream.SerialiserObject(LstFigurines?.Count ?? 0);
+            if (LstFigurines != null)
+                foreach (Element e in LstFigurines) stream.SerialiserRefElement(e, ref gidr);
+            stream.SerialiserObject(0);//Marque la fin
+        }
+
+        override public void SerialiserTout(Stream stream, ref int gidr, ISet<int> setIdRéseau)
+        {
+            if (LstElements != null)
+                foreach (Element e in LstElements) stream.SerialiserTout(e, ref gidr, setIdRéseau);
+            if (LstFigurines != null)
+                foreach (Element e in LstFigurines) stream.SerialiserTout(e, ref gidr, setIdRéseau);
+            base.SerialiserTout(stream, ref gidr, setIdRéseau);
+        }
     }
 }

@@ -15,7 +15,19 @@ namespace ModuleBOARD.Elements.Base
 {
     public class BibliothèqueImage
     {
-        static private Image initEmptyImage(int w, int h)
+        static public Image InitImageVide(string sig)
+        {
+            int w, h;
+            SigExImageInfo(sig, out _, out w, out h);
+            Image img;
+            if(0 < w && w < OutilsRéseau.NB_WPixel_MAX && 0 < h && h < OutilsRéseau.NB_HPixel_MAX) // ni trop petite ni trop grande ?
+                img = InitImageVide(w, h);
+            else img = InitErrorImage(20, 20);
+            img.Tag = sig;
+            return img;
+        }
+
+        static public Image InitImageVide(int w, int h)
         {
             Image img = new Bitmap(w, h);
             Graphics g = Graphics.FromImage(img);
@@ -23,10 +35,12 @@ namespace ModuleBOARD.Elements.Base
             Brush b = new SolidBrush(Color.Black);
             g.FillRectangle(b, 0, 0, w, h);
             g.DrawRectangle(p, 0, 0, w, h);
+            byte[] hash = new byte[16];
+            img.Tag = ImageInfoToSig(hash, w, h, "");
             return img;
         }
 
-        static private Image initErrorImage(int w, int h)
+        static public Image InitErrorImage(int w, int h)
         {
             Image img = new Bitmap(w, h);
             Graphics g = Graphics.FromImage(img);
@@ -36,16 +50,20 @@ namespace ModuleBOARD.Elements.Base
             g.DrawRectangle(p, 0, 0, w, h);
             g.DrawLine(p, 0, 0, w, h);
             g.DrawLine(p, 0, w, 0, h);
+            byte[] hash = new byte[16];
+            for (int i = 0; i < 16; ++i) hash[i] = 0xFF;
+            img.Tag = ImageInfoToSig(new byte[16], w, h, "");
             return img;
         }
 
-        static public readonly Image EmptyImage = initEmptyImage(20, 20);
+        static public readonly Image ImageVide = InitImageVide(20, 20);
         private Dictionary<string, Image> DImgs = new Dictionary<string, Image>();
-        private Dictionary<string, Image> DImgsInco = new Dictionary<string, Image>();//images inconnues
+        //private Dictionary<string, Image> DImgsInco = new Dictionary<string, Image>();//images inconnues
+        //private HashSet<string> HSetImgsInco = new HashSet<string>();
+        private SortedSet<string> LstImgsInco = new SortedSet<string>();
 
-        static public MemoryStream ImageVersJPEG(Image img)
+        /*static public MemoryStream ImageVersStream(MemoryStream memStream, Image img)
         {
-            MemoryStream memStream = new MemoryStream();
             string sig = img.Tag as string;
             if (sig != null)
             {
@@ -57,6 +75,75 @@ namespace ModuleBOARD.Elements.Base
             }
             else img.Save(memStream, ImageFormat.Jpeg);
             return memStream;
+        }*/
+
+        /*static public Image ChargerImage(string sig, MemoryStream memStream)
+        {
+            Image img = new Bitmap(memStream);
+            img.Tag = sig;
+            return img;
+        }*/
+
+        static public Image ChargerImage(ref MemoryStream stream)
+        {
+            string sig = stream.ReadString();
+            { 
+                //On ajuste le flux en supprimant ce qui a été consomé de façon à charger l'image sans accro
+                MemoryStream ms = new MemoryStream();
+                stream.CopyTo(ms);
+                stream = ms;
+            }
+            Image img = Bitmap.FromStream(stream);
+            if (sig.Length >= 28)
+            {
+                int w, h;
+                SigExImageInfo(sig, out _, out w, out h);
+                if (img.Width == w && img.Height == h)
+                {
+                    img.Tag = sig;
+                    return img;
+                }
+                else return null;
+            }
+            else return null;
+        }
+
+        static public bool SauvegarderImage(Image img, Stream stream)
+        {
+            if(img != null && img.RawFormat.Guid != ImageFormat.MemoryBmp.Guid)
+            {
+                string sig = img.Tag as string;
+                stream.SerialiserObject(sig ?? "");
+                /*sig = sig.Substring(sig.Length - 5).ToUpper();
+                if (sig.EndsWith(".JPEG") || sig.EndsWith(".JPG")) img.Save(memStream, ImageFormat.Jpeg);
+                else if (sig.EndsWith(".PNG")) img.Save(memStream, ImageFormat.Png);
+                else if (sig.EndsWith(".BMP")) img.Save(memStream, ImageFormat.Bmp);
+                else img.Save(memStream, ImageFormat.Jpeg);*/
+                /*if (ImageFormat.Jpeg.Equals(img.RawFormat))// JPEG
+                    img.Save(stream, ImageFormat.Jpeg);
+                else if (ImageFormat.Png.Equals(img.RawFormat))// PNG
+                    img.Save(stream, ImageFormat.Png);
+                else if (ImageFormat.Gif.Equals(img.RawFormat))// Bitmap
+                    img.Save(stream, ImageFormat.Bmp);
+                else if (ImageFormat.Icon.Equals(img.RawFormat))// Icon
+                    img.Save(stream, ImageFormat.Icon);*/
+                img.Save(stream, img.RawFormat);
+                return true;
+            }
+            else return false;
+        }
+
+        public bool RécupérerImage(string sig, Stream stream)
+        {
+            lock(DImgs)
+            {
+                Image img;
+                if(DImgs.TryGetValue(sig, out img) && img.RawFormat.Guid != ImageFormat.MemoryBmp.Guid)
+                {
+                    return SauvegarderImage(img, stream);
+                }
+                else return false;
+            }
         }
 
         static public string SigExImageInfo(string sig, out byte[] hash, out int w, out int h)
@@ -94,18 +181,29 @@ namespace ModuleBOARD.Elements.Base
             bsig[3] = (byte)((h >> 8) & 0xFF);
             bsig[4] = (byte)((h >> 0) & 0xFF);
             Array.Copy(bMd5Hash, 0, bsig, 5, bMd5Hash.Length);
-            return Convert.ToBase64String(bsig) + fileName;
+            //if (fileName.Length > 2) fileName = fileName.Substring(0,2);
+            return Convert.ToBase64String(bsig);// + fileName;
         }
 
         static public string GetImageSig(string fileName, Bitmap btmp, int x, int y)
         {
             using (MD5 md5Hash = MD5.Create())
             {
-                BitmapData btdt = btmp.LockBits(new Rectangle(0, 0, btmp.Width, btmp.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                /*BitmapData btdt = btmp.LockBits(new Rectangle(0, 0, btmp.Width, btmp.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb); //PixelFormat.Format32bppArgb
                 byte[] block = new byte[4 * btmp.Width * btmp.Height];
                 System.Runtime.InteropServices.Marshal.Copy(btdt.Scan0, block, 0, block.Length);
                 md5Hash.TransformFinalBlock(block, 0, block.Length);
-                btmp.UnlockBits(btdt);
+                btmp.UnlockBits(btdt);*/
+                byte[] block = UTF8Encoding.UTF8.GetBytes(fileName);
+                md5Hash.TransformBlock(block, 0, block.Length, block, 0);
+                block = btmp.RawFormat.Guid.ToByteArray();
+                md5Hash.TransformBlock(block, 0, block.Length, block, 0);
+                using (MemoryStream strm = new MemoryStream())
+                {
+                    btmp.Save(strm, btmp.RawFormat);
+                    block = strm.ToArray();
+                    md5Hash.TransformFinalBlock(block, 0, block.Length);
+                }
                 return ImageInfoToSig(md5Hash.Hash, btmp.Width, btmp.Height, fileName);
             }
         }
@@ -113,12 +211,15 @@ namespace ModuleBOARD.Elements.Base
         public Image CheckDicoImage(Bitmap img, string file, int x, int y)
         {
             string fileSig = GetImageSig(file, img, x, y);
-            if (DImgs.ContainsKey(fileSig)) return DImgs[fileSig];
-            else
+            lock (DImgs)
             {
-                img.Tag = fileSig;
-                DImgs.Add(fileSig, img);
-                return img;
+                if (DImgs.ContainsKey(fileSig)) return DImgs[fileSig];
+                else
+                {
+                    img.Tag = fileSig;
+                    DImgs.Add(fileSig, img);
+                    return img;
+                }
             }
         }
 
@@ -163,16 +264,25 @@ namespace ModuleBOARD.Elements.Base
             else return RecadreCheckDicoImage(btmp, file, x, y, w, h);
         }
 
-        public Bitmap Recadrer(Bitmap btmp, int x, int y, int w, int h)
+        public Bitmap Recadrer(Bitmap btmp, int x, int y, int w, int h, Int64 qualité = 100L)
         {
             if (x > 0 || y > 0 || w < btmp.Width || h < btmp.Height)
             {
                 Bitmap nbtmap = new Bitmap(w, h);
                 Graphics.FromImage(nbtmap).DrawImage(btmp, new Rectangle(0, 0, w, h), new Rectangle(x, y, w, h), GraphicsUnit.Pixel);
+                ImageCodecInfo Encoder = ImageCodecInfo.GetImageDecoders().First(ecd => ecd.FormatID == btmp.RawFormat.Guid);
+                EncoderParameter myEncoderParameter = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, qualité);
+                EncoderParameters myEncoderParameters = new EncoderParameters(1);
+                myEncoderParameters.Param[0] = myEncoderParameter;
+                MemoryStream strm = new MemoryStream();
+                nbtmap.Save(strm, Encoder, myEncoderParameters);
+                nbtmap = Image.FromStream(strm) as Bitmap;
                 return nbtmap;
             }
             else return btmp;
         }
+
+
 
         public Image RecadreCheckDicoImage(Bitmap btmp, string file, int x, int y, int w, int h)
         {
@@ -232,8 +342,9 @@ namespace ModuleBOARD.Elements.Base
             }
         }
 
-        public List<KeyValuePair<Image, Image>> ChargerCartesImage(string path, XmlNodeList lpaq, Image dos = null)
+        public List<KeyValuePair<Image, Image>> ChargerCartesImage(string path, XmlNodeList lpaq, Image PileVide)
         {
+            Image dos = null;
             List<KeyValuePair<Image, Image>> imgs = new List<KeyValuePair<Image, Image>>();
 
             foreach (XmlNode n in lpaq)
@@ -243,6 +354,7 @@ namespace ModuleBOARD.Elements.Base
                     if (String.IsNullOrWhiteSpace(fileImg) == false)
                     {
                         dos = ChargerSImage(path, fileImg, n, "x", "y", "w", "h");
+                        if (dos == PileVide) dos = null;
                     }
                 }
                 else if (n.Name.ToUpper().Trim() == "CARTE")
@@ -263,6 +375,7 @@ namespace ModuleBOARD.Elements.Base
                         if (String.IsNullOrWhiteSpace(fileDos) == false)
                         {
                             localDos = ChargerSImage(path, fileDos, n, "x", "y", "w", "h");
+                            if (localDos == PileVide) localDos = null;
                         }
                         else localDos = null;
                     }
@@ -271,7 +384,7 @@ namespace ModuleBOARD.Elements.Base
                     string fileImg = n.Attributes?.GetNamedItem("img")?.Value;
                     if (String.IsNullOrWhiteSpace(fileImg) == false)
                     {
-                        List<KeyValuePair<Image, Image>> simgs = LoadSImages(path, fileImg, n).Select(img => new KeyValuePair<Image, Image>(localDos ?? img, img)).ToList();
+                        List<KeyValuePair<Image, Image>> simgs = LoadSImages(path, fileImg, n).Select(img => new KeyValuePair<Image, Image>((PileVide == null ? localDos ?? img : localDos), img)).ToList();
                         if (simgs != null && simgs.Count > 0)
                         {
                             XmlNodeList quantNd = n.ChildNodes;
@@ -307,52 +420,85 @@ namespace ModuleBOARD.Elements.Base
 
         public Image RécupérerOuCréerImage(string sig)
         {
-            if (DImgs.ContainsKey(sig)) return DImgs[sig];
-            else if(DImgsInco.ContainsKey(sig)) return DImgsInco[sig];
-            else // Sinon, on génère une image de la taille w, h extrait de la signature
+            if (sig.Length < 28) return null;
+
+            Image img;
+            lock (DImgs)
             {
-                int w, h;
-                SigExImageInfo(sig, out _, out w, out h);
-                Image img;
-                if (w*h > OutilsRéseau.NB_OCTET_MAX) // Image trop grande ?
-                    img = initErrorImage(20, 20);
-                else img = initErrorImage(w, h);
-                DImgsInco.Add(sig, img);
-                return img;
+                if (DImgs.TryGetValue(sig, out img)) return img;
             }
+
+            // Sinon, on génère une image de la taille w, h extrait de la signature
+            int w, h;
+            SigExImageInfo(sig, out _, out w, out h);
+            if (0 < w && w < OutilsRéseau.NB_WPixel_MAX && 0 < h && h < OutilsRéseau.NB_HPixel_MAX) // Image trop grande ?
+                img = InitImageVide(w, h);
+            else img = InitErrorImage(20, 20);
+            img.Tag = sig;
+            lock (LstImgsInco) { LstImgsInco.Add(sig);}
+            lock (DImgs) { DImgs[sig] = img; }
+            return img;
         }
 
-        public bool NouvelleVersion(string sig, Image img)
+        public bool NouvelleVersion(Image img)
         {
-            Image orImg;
-            if(DImgsInco.ContainsKey(sig))
-            {
-                orImg = DImgsInco[sig];
-                DImgsInco.Remove(sig);
-            }
-            else if(DImgs.ContainsKey(sig)) orImg = DImgs[sig];
-            else
-            {
-                DImgs[sig] = img;
-                return true;
-            }
+            if(img == null) return false;
+            string sig = img.Tag as string;
+            if (sig == null || sig.Length < 28) return false;
 
-            if (img.Width == orImg.Width && img.Height == orImg.Height)
+            int w, h;
+            SigExImageInfo(sig, out _, out w, out h);
+            if (img.Width != w || img.Height != h) return false;
+
+            Image orImg = null;
+
+            lock (LstImgsInco) { LstImgsInco.Remove(sig);}
+
+            lock (DImgs)
             {
-                Graphics.FromImage(orImg).DrawImage(img, img.Rect(), img.Rect(), GraphicsUnit.Pixel);
-                DImgs[sig] = orImg;
-                return true;
+                if (DImgs.TryGetValue(sig, out orImg))
+                {
+                    if (img.Width == orImg.Width && img.Height == orImg.Height)
+                    {
+                        //lock (orImg) { Graphics.FromImage(orImg).DrawImage(img, img.Rect(), img.Rect(), GraphicsUnit.Pixel); }
+                        DImgs[sig] = img;
+                        return true;
+                    }
+                    else return false;
+                }
+                else
+                {
+                    DImgs[sig] = img;
+                    return false;
+                }
             }
-            else return false;
         }
 
-        public string PremierModelInconnue { get => DImgsInco.Keys.FirstOrDefault(); }
-        public List<string> ModelInconnues { get => DImgsInco.Keys.ToList(); }
+        //public string PremierModelInconnue { get { lock (DImgsInco) { return DImgsInco.Keys.FirstOrDefault(); } } }
+        public List<string> ImageInconnues
+        {
+            get
+            {
+                List<string> res;
+                lock (LstImgsInco)
+                {
+                    res = LstImgsInco.ToList();
+                    LstImgsInco.Clear();
+                }
+                return res;
+            }
+        }
 
         public void Netoyer()
         {
-            DImgs.Clear();
-            DImgsInco.Clear();
+            lock (DImgs)
+            {
+                DImgs.Clear();
+            }
+            lock (LstImgsInco)
+            {
+                LstImgsInco.Clear();
+            }
         }
     }
 }

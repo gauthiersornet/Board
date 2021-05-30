@@ -1,10 +1,12 @@
 ﻿using ModuleBOARD.Elements.Base;
 using ModuleBOARD.Elements.Lots.Piles;
 using ModuleBOARD.Elements.Pieces;
+using ModuleBOARD.Réseau;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -13,12 +15,12 @@ using System.Xml;
 
 namespace ModuleBOARD.Elements.Lots
 {
-    class Paquet : Element, IFigurine
+    public class Paquet : Element, IFigurine
     {
         public struct SElemQty
         {
             public Element Elm;
-            public int Qty;
+            public short Qty;
         }
 
         public Image ImgVisible;
@@ -29,7 +31,8 @@ namespace ModuleBOARD.Elements.Lots
 
         public float Z { get; set; }
 
-        public override bool EstParent { get => true; }
+        //public override bool EstParent { get => true; }
+        public override EType ElmType { get => EType.Paquet; }
 
         public override PointF Size
         {
@@ -39,16 +42,30 @@ namespace ModuleBOARD.Elements.Lots
 
                 if(0<=ElementSélectionné)//visible ?
                 {
-                    imgref = ImgVisible ?? ImgCaché ?? BibliothèqueImage.EmptyImage;
+                    imgref = ImgVisible ?? ImgCaché ?? BibliothèqueImage.ImageVide;
                 }
                 else //Caché
                 {
-                    imgref = ImgCaché ?? ImgVisible ?? BibliothèqueImage.EmptyImage;
+                    imgref = ImgCaché ?? ImgVisible ?? BibliothèqueImage.ImageVide;
                 }
 
                 PointF sz = GC.ProjSize(imgref.Rect());
                 return sz;
             }
+        }
+
+        public Paquet(Element elm) : base(elm)
+        {
+            ElementLaché(elm);
+            if (EstDansEtat(EEtat.À_l_envers))
+            {
+                ElementSélectionné = -1;
+            }
+            else
+            {
+                ElementSélectionné = 0;
+            }
+            CorrigerSelection();
         }
 
         public Paquet(Paquet elm)
@@ -75,7 +92,7 @@ namespace ModuleBOARD.Elements.Lots
             {
                 Element elm;
                 if (xmln.Name.ToUpper().Trim() != "GROUPE")
-                    elm = Charger(path, xmln, _dElements, bibliothèqueImage, bibliothèqueModel);
+                    elm = Charger(path, xmln, new PointF(0.0f, 0.0f), _dElements, bibliothèqueImage, bibliothèqueModel);
                 else elm = null;
                 /*switch (xmln.Name.ToUpper().Trim())
                 {
@@ -93,8 +110,8 @@ namespace ModuleBOARD.Elements.Lots
                     string nom = xmln.Attributes?.GetNamedItem("nom")?.Value;
                     if (nom != null) _dElements.Add(nom, elm);
                     string qty = xmln.Attributes?.GetNamedItem("qty")?.Value;
-                    int iqty;
-                    if (qty != null && int.TryParse(qty, out iqty))
+                    short iqty;
+                    if (qty != null && short.TryParse(qty, out iqty))
                         LstElements.Add(new SElemQty() { Elm = elm, Qty = iqty });
                     else LstElements.Add(new SElemQty() { Elm = elm, Qty = -1 });
                 }
@@ -102,7 +119,7 @@ namespace ModuleBOARD.Elements.Lots
             _lier(paq.ChildNodes, _dElements);
             LstElements.Sort();
 
-            if (LstElements != null && LstElements.Any())
+            /*if (LstElements != null && LstElements.Any())
             {
                 if (paq.Attributes?.GetNamedItem("caché") != null)
                     ElementSélectionné = -1;
@@ -110,7 +127,16 @@ namespace ModuleBOARD.Elements.Lots
                     ElementSélectionné = 0;
                 else ElementSélectionné = 0;
                 CorrigerSelection();
+            }*/
+            if (EstDansEtat(EEtat.À_l_envers))
+            {
+                ElementSélectionné = -1;
             }
+            else
+            {
+                ElementSélectionné = 0;
+            }
+            CorrigerSelection();
         }
 
         private bool _lier(XmlNodeList paqL, Dictionary<string, Element> dElements)
@@ -317,9 +343,31 @@ namespace ModuleBOARD.Elements.Lots
             }
         }
 
-        public override Element MousePioche()
+        public override Element MousePioche(int index)
         {
-            int elmPioché = -1;//Pas de pioche
+            if(index == int.MaxValue) index = GetPiocheIndex();
+
+            if (LstElements != null && 0 <= index && index < LstElements.Count)
+            {
+                SElemQty elmQt = LstElements[index];
+                Element felm = elmQt.Elm.Clone() as Element;
+                elmQt.Qty--;
+                LstElements[index] = elmQt;
+                if (elmQt.Qty == 0)
+                {
+                    LstElements.RemoveAt(index);
+                    CorrigerSelection();
+                }
+                felm.GC = GC;
+                felm.Parent = this;
+                return felm;
+            }
+            else return null;
+        }
+
+        public override int GetPiocheIndex()
+        {
+            int elmPioché;//Pas de pioche
             if (ADuContenu())
             {
                 if (0 <= ElementSélectionné)//visible ?
@@ -340,23 +388,8 @@ namespace ModuleBOARD.Elements.Lots
                     }
                 }
             }
-
-            if (0 <= elmPioché)
-            {
-                SElemQty elmQt = LstElements[elmPioché];
-                Element felm = elmQt.Elm.Clone() as Element;
-                elmQt.Qty--;
-                LstElements[elmPioché] = elmQt;
-                if (elmQt.Qty == 0)
-                {
-                    LstElements.RemoveAt(elmPioché);
-                    CorrigerSelection();
-                }
-                felm.GC = GC;
-                felm.Parent = this;
-                return felm;
-            }
-            else return null;
+            else elmPioché = int.MaxValue;//Pas de pioche
+            return elmPioché;
         }
 
         /*public override Element MousePiocheAt(PointF mp, float angle)
@@ -475,6 +508,7 @@ namespace ModuleBOARD.Elements.Lots
                 {
                     ElementSélectionné = 0;
                 }
+                CorrigerSelection();
             }
             base.MajEtat(nouvEtat);
         }
@@ -567,34 +601,99 @@ namespace ModuleBOARD.Elements.Lots
         /// <param name="numElm"></param>
         /// <param name="elm"></param>
         /// <returns></returns>
-        override public Element MettreAJour(int numElm, Element elm)
+        override public object MettreAJour(object obj)
         {
-            if (numElm == IdentifiantRéseau) return elm;
-            else
+            if (obj is Element)
             {
-                Element res = null;
-                for (int i = 0; res == null && i < LstElements.Count; ++i)
+                Element elm = obj as Element;
+                if (elm.IdentifiantRéseau == IdentifiantRéseau) return elm;
+                else
                 {
-                    SElemQty e = LstElements[i];
-                    if (e.Elm != null)
+                    object res = null;
+                    for (int i = 0; res == null && i < LstElements.Count; ++i)
                     {
-                        res = e.Elm.MettreAJour(numElm, elm);
-                        if (e.Elm == res) e.Elm = elm;
+                        SElemQty e = LstElements[i];
+                        if (e.Elm != null)
+                        {
+                            res = e.Elm.MettreAJour(elm);
+                            if (e.Elm == res) e.Elm = elm;
+                        }
                     }
+                    return res;
                 }
-                return res;
             }
+            else if (obj is Image)
+            {
+                Image img = obj as Image;
+                if (LstElements != null)
+                    LstElements.ForEach(eq => eq.Elm?.MettreAJour(img));
+                return base.MettreAJour(obj);
+            }
+            else return base.MettreAJour(obj);
         }
 
-        /*override public ContextMenu Menu(Control ctrl)
+        override public ContextMenu Menu(IBoard ctrl)
         {
             ContextMenu cm = base.Menu(ctrl);
             if (cm == null) cm = new ContextMenu();
-            cm.MenuItems.AddRange(new MenuItem[]
-                    {
-                        new MenuItem("Ranger", new EventHandler((o,e) => {Board.RangerVersParent(this); ctrl.Refresh(); }))
-                    });
+
+            MenuItem nbc = new MenuItem((LstElements?.Sum(s => s.Qty) ?? 0) + " Item(s)");
+            int idx;
+            for (idx = 0; idx < cm.MenuItems.Count && cm.MenuItems[idx].Text != "État"; ++idx) ;
+            if (idx < cm.MenuItems.Count) cm.MenuItems[idx].MenuItems.Add(0, nbc);
+            else cm.MenuItems.Add(new MenuItem("État", new MenuItem[1] { nbc }));
+            cm.MenuItems.Add(new MenuItem("Ranger", new EventHandler((o, e) => { ctrl.RangerVersParent(this); })));
             return cm;
-        }*/
+        }
+
+        public Paquet(Stream stream, IRessourcesDésérialiseur resscDes)
+            : base(stream, resscDes)
+        {
+            ImgVisible = resscDes.RécupérerImage(stream);
+            ImgCaché = resscDes.RécupérerImage(stream);
+            ushort nbTypElm = BitConverter.ToUInt16(stream.GetBytes(2), 0);
+            if (nbTypElm > 0)
+            {
+                LstElements = new List<SElemQty>(nbTypElm);
+                for (int i = 0; i < nbTypElm; ++i)
+                {
+                    SElemQty elemQty;
+                    elemQty.Qty = BitConverter.ToInt16(stream.GetBytes(2), 0);
+                    elemQty.Elm = resscDes.RetrouverObject(stream) as Element;
+                    LstElements.Add(elemQty);
+                }
+            }
+            else LstElements = null;
+            ElementSélectionné = BitConverter.ToInt32(stream.GetBytes(4), 0);
+        }
+
+        override public void Serialiser(Stream stream, ref int gidr)
+        {
+            base.Serialiser(stream, ref gidr);
+
+            stream.SerialiserObject(ImgVisible?.Tag.ToString() ?? "");
+            stream.SerialiserObject(ImgCaché?.Tag.ToString() ?? "");
+            ushort nbTypElm = (ushort)(LstElements?.Count ?? 0);
+            stream.WriteBytes(BitConverter.GetBytes(nbTypElm));
+            for (int i = 0; i < nbTypElm; ++i)
+            {
+                SElemQty elemQty = LstElements[i];
+                stream.WriteBytes(BitConverter.GetBytes(elemQty.Qty));
+                stream.SerialiserRefElement(elemQty.Elm, ref gidr);
+            }
+            stream.WriteBytes(BitConverter.GetBytes(ElementSélectionné));
+        }
+
+        override public void SerialiserTout(Stream stream, ref int gidr, ISet<int> setIdRéseau)
+        {
+            if (LstElements != null)
+            {
+                foreach (SElemQty eqty in LstElements)
+                {
+                    if (eqty.Elm != null) stream.SerialiserTout(eqty.Elm, ref gidr, setIdRéseau);
+                }
+            }
+            base.SerialiserTout(stream, ref gidr, setIdRéseau);
+        }
     }
 }

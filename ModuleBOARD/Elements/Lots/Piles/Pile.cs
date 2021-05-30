@@ -1,9 +1,11 @@
 ﻿using ModuleBOARD.Elements.Base;
 using ModuleBOARD.Elements.Pieces;
+using ModuleBOARD.Réseau;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -23,7 +25,8 @@ namespace ModuleBOARD.Elements.Lots.Piles
         public List<KeyValuePair<Image, Image>> Images = null;
         public int Courrante = -1;
 
-        public override bool EstParent { get => true; }
+        //public override bool EstParent { get => true; }
+        public override EType ElmType { get => EType.Pile; }
 
         private float Epaisseur
         {
@@ -56,15 +59,34 @@ namespace ModuleBOARD.Elements.Lots.Piles
                 }
                 else imgref = PileVide;
 
-                PointF sz = GC.ProjSize(imgref.Rect());
+                PointF sz;
+                if (imgref != null) sz = GC.ProjSize(imgref.Rect());
+                else sz = GC.ProjSize(new Rectangle(0, 0, 20, 20));
+
                 sz.X += ep;
                 sz.Y += ep;
                 return sz;
             }
         }
 
-        public Pile()
+        protected Pile() { }
+
+        protected Pile(int idREz) : base(idREz) { }
+
+        public Pile(Element elm) : base(elm) { }
+
+        public Pile(Element2D element2D) : base(element2D)
         {
+            Parent = null;
+            PileVide = element2D.ElmImage;
+            Images = new List<KeyValuePair<Image, Image>>() { new KeyValuePair<Image, Image>(null, element2D.ElmImage) };
+        }
+
+        public Pile(Element2D2F element2D2F) : base(element2D2F)
+        {
+            Parent = null;
+            PileVide = element2D2F.Dos ?? element2D2F.ElmImage;
+            Images = new List<KeyValuePair<Image, Image>>() { new KeyValuePair<Image, Image>(null, element2D2F.ElmImage) };
         }
 
         public Pile(Pile elm)
@@ -83,7 +105,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
             GC.P.Y += p.Y;
             //Parent = parent;
             string filePV = paq.Attributes?.GetNamedItem("vide")?.Value;
-            if(filePV != null) PileVide = bibliothèqueImage.ChargerSImage(path, filePV, paq, "dx", "dy", "dw", "dh");
+            if(filePV != null) PileVide = bibliothèqueImage.ChargerSImage(path, filePV, paq, "dx", "dy", "w", "h");
 
             Images = bibliothèqueImage.ChargerCartesImage(path, paq.ChildNodes, PileVide);
             /*if(Images != null)
@@ -107,6 +129,28 @@ namespace ModuleBOARD.Elements.Lots.Piles
             else if (paq.Attributes?.GetNamedItem("montré") != null)
                 Courrante = 0;
             else Courrante = -1;
+        }
+
+        override public object MettreAJour(object obj)
+        {
+            if (obj is Image)
+            {
+                Image img = obj as Image;
+                if (PileVide != null && String.Equals(PileVide.Tag, img.Tag))
+                    PileVide = img;
+                if (Images != null)
+                {
+                    for (int i = 0; i < Images.Count; ++i)
+                    {
+                        if (Images[i].Key != null && String.Equals(Images[i].Key.Tag, img.Tag))
+                            Images[i] = new KeyValuePair<Image, Image>(img, Images[i].Value);
+                        if (Images[i].Value != null && String.Equals(Images[i].Value.Tag, img.Tag))
+                            Images[i] = new KeyValuePair<Image, Image>(Images[i].Key, img);
+                    }
+                }
+                return base.MettreAJour(obj);
+            }
+            else return base.MettreAJour(obj);
         }
 
         public override void Dessiner(RectangleF vue, float angle, Graphics g, PointF p)
@@ -161,7 +205,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
                     }
                     else if (PileVide != null)
                     {
-                        drawMat = PileVide.DessinerVide(vue, g, gc);
+                        drawMat = PileVide.Dessiner(vue, g, gc);
                         rect = PileVide.RectF();
                     }
                     else
@@ -237,40 +281,58 @@ namespace ModuleBOARD.Elements.Lots.Piles
             else return a.Width * b.Height == a.Height * b.Width;
         }
 
+        public Image TrouverUneImage()
+        {
+            if (Images != null)
+            {
+                KeyValuePair<Image, Image> kv = Images.FirstOrDefault(x => x.Key != null || x.Value != null);
+                return kv.Key ?? kv.Value ?? PileVide;
+            }
+            else return PileVide;
+        }
+
         private bool EstCompatible(Element elm)
         {
-            KeyValuePair<Image, Image> kv = Images.FirstOrDefault(x => x.Key != null || x.Value != null);
-            Image imgCmp = kv.Key ?? kv.Value ?? PileVide;
-
-            if (elm is Pile)
+            if (elm != null && elm.GC.E == GC.E)
             {
-                Pile ep = elm as Pile;
+                Image imgCmp = TrouverUneImage();
 
-                if (ep.GC.E == GC.E)//Même echelle ?
+                if (elm is Pile)
                 {
-                    KeyValuePair<Image, Image> kvEp = Images.FirstOrDefault(x => x.Key != null || x.Value != null);
-                    Image imgCmpEp = kvEp.Key ?? kvEp.Value ?? ep.PileVide;
+                    if (imgCmp == null) return true;
+                    Pile ep = elm as Pile;
 
-                    return EstRectEquivalent(imgCmpEp, imgCmp);
+                    //Même echelle ?
+                    return EstRectEquivalent(ep.TrouverUneImage(), imgCmp);
+                    /*{
+                        KeyValuePair<Image, Image> kvEp = Images.FirstOrDefault(x => x.Key != null || x.Value != null);
+                        Image imgCmpEp = kvEp.Key ?? kvEp.Value ?? ep.PileVide;
+
+                        return EstRectEquivalent(imgCmpEp, imgCmp);
+                    }*/
+                    //else return false;
+                }
+                else if (elm is Element2D)
+                {
+                    if (imgCmp == null) return true;
+
+                    Element2D e2d = elm as Element2D;
+                    if (EstRectEquivalent(imgCmp, e2d.ElmImage))
+                    {
+                        if (e2d is Element2D2F)
+                        {
+                            Element2D2F e2d2d = e2d as Element2D2F;
+                            if (e2d2d.Dos != null && e2d2d.ElmImage != null)
+                                return EstRectEquivalent(e2d2d.Dos, e2d2d.ElmImage);
+                            else return true;
+                        }
+                        else return true;
+                    }
+                    else return false;
                 }
                 else return false;
             }
-            else if (elm is Element2D)
-            {
-                Element2D e2d = elm as Element2D;
-                if(EstRectEquivalent(imgCmp, e2d.ElmImage))
-                {
-                    if (e2d is Element2D2F)
-                    {
-                        Element2D2F e2d2d = e2d as Element2D2F;
-                        if (e2d2d.Dos != null && e2d2d.ElmImage != null)
-                            return EstRectEquivalent(e2d2d.Dos, e2d2d.ElmImage);
-                        else return true;
-                    }
-                    else return true;
-                }
-            }
-            return true;
+            else return false;
         }
 
         public override Element ElementLaché(Element elm)
@@ -279,18 +341,31 @@ namespace ModuleBOARD.Elements.Lots.Piles
             {
                 if (elm is Pile)
                 {
-                    AddRange((elm as Pile).Images, false);
-                    (elm as Pile).Images = null;
+                    Pile pl = (elm as Pile);
+                    List<KeyValuePair<Image, Image>> imgs = pl.Images;
+                    if (imgs != null)
+                    {
+                        pl.Images = null;
+                        if (pl.PileVide != PileVide)
+                        {
+                            for (int i = 0; i < imgs.Count; ++i)
+                            {
+                                if (imgs[i].Key == PileVide) imgs[i] = new KeyValuePair<Image, Image>(null, imgs[i].Value);
+                                else if (imgs[i].Key == pl.PileVide) imgs[i] = new KeyValuePair<Image, Image>(pl.PileVide, imgs[i].Value);
+                            }
+                        }
+                        AddRange(imgs, false);
+                    }
                     return elm;
                 }
                 else if(elm is Element2D2F)
                 {
-                    Add(new KeyValuePair<Image, Image>((elm as Element2D2F).Dos, (elm as Element2D2F).ElmImage), false);
+                    Add(new KeyValuePair<Image, Image>(((elm as Element2D2F).Dos != PileVide ? (elm as Element2D2F).Dos : null), (elm as Element2D2F).ElmImage), false);
                     return null;
                 }
                 else if (elm is Element2D)
                 {
-                    Add(new KeyValuePair<Image, Image>((elm as Element2D).ElmImage, (elm as Element2D).ElmImage), false);
+                    Add(new KeyValuePair<Image, Image>(((elm as Element2D).ElmImage != PileVide ? (elm as Element2D).ElmImage : null), (elm as Element2D).ElmImage), false);
                     return null;
                 }
                 else return elm;
@@ -319,13 +394,33 @@ namespace ModuleBOARD.Elements.Lots.Piles
             return base.MousePickAvecContAt(mp, angle, action);
         }
 
-        //public override Element MousePiocheAt(PointF mp, float angle)
-        public override Element MousePioche()
+        private void VérifierCourrante()
         {
-            if (Images != null && Images.Count > 0)
+            if (Images != null && Images.Any())
+            {
+                if (Courrante < 0)
+                {
+                    if (Courrante < -Images.Count) Courrante = -Images.Count;
+                }
+                else
+                {
+                    if (Courrante >= Images.Count) Courrante = Images.Count - 1;
+                }
+            }
+        }
+
+        //public override Element MousePiocheAt(PointF mp, float angle)
+        public override Element MousePioche(int index = int.MaxValue)
+        {
+            if (Images != null && Images.Count > 0 && 0 <= index && (index< Images.Count || index == int.MaxValue))
             {
                 KeyValuePair<Image, Image> kvImg;
-                if (0 <= Courrante)
+                if (index == int.MaxValue) index = GetPiocheIndex();
+
+                kvImg = Images[index];
+                Images.RemoveAt(index);
+
+                /*if (0 <= Courrante)
                 {
                     if (Courrante >= Images.Count) Courrante = 0;
                     kvImg = Images[Courrante];
@@ -344,15 +439,15 @@ namespace ModuleBOARD.Elements.Lots.Piles
                     int pioch = Images.Count - 1;
                     kvImg = Images[pioch];
                     Images.RemoveAt(pioch);
-                }
+                }*/
                 /*GC.P.X += CEpaisseur;
                 GC.P.Y += CEpaisseur;*/
 
                 Element2D elm2D;
-                if (kvImg.Key !=null && kvImg.Key != kvImg.Value)
+                if (((kvImg.Key ?? PileVide) != null) && kvImg.Key != kvImg.Value)
                 {
                     elm2D = new Element2D2F();
-                    (elm2D as Element2D2F).Dos = kvImg.Key;
+                    (elm2D as Element2D2F).Dos = kvImg.Key ?? PileVide;
                     elm2D.ElmImage = kvImg.Value;
                     (elm2D as Element2D2F).Caché = (Courrante < 0);
                 }
@@ -363,23 +458,35 @@ namespace ModuleBOARD.Elements.Lots.Piles
                 }
 
                 elm2D.GC = GC;
-                if (Images != null && Images.Any())
+                if (Images != null)
                 {
-                    elm2D.GC.P.X -= Images.Count * CEpaisseur;
-                    elm2D.GC.P.Y -= Images.Count * CEpaisseur;
+                    elm2D.GC.P.X -= (Images.Count + 1) * CEpaisseur;
+                    elm2D.GC.P.Y -= (Images.Count + 1) * CEpaisseur;
                 }
                 elm2D.Parent = this;
 
+                VérifierCourrante();
                 return elm2D;
             }
             else return base.MousePioche();
         }
 
-        public void Mélanger()
+        public override int GetPiocheIndex()
+        {
+            if (Images != null && Images.Any())
+            {
+                VérifierCourrante();
+                if (Courrante < 0) return (Images.Count + Courrante);
+                else return Courrante;
+            }
+            else return int.MaxValue;
+        }
+
+        public void Mélanger(Random rnd = null)
         {
             if (Images != null)
             {
-                Random rnd = new Random();
+                if(rnd == null) rnd = new Random();
                 for (int i = 0; i < Images.Count; ++i)
                 {
                     int swi = rnd.Next(Images.Count);
@@ -397,7 +504,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
             }
         }
 
-        public KeyValuePair<Image, Image> Add(KeyValuePair<Image, Image> elm, bool atBack = true)
+        protected KeyValuePair<Image, Image> Add(KeyValuePair<Image, Image> elm, bool atBack = true)
         {
             if (elm.Value != null)
             {
@@ -421,7 +528,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
             else return elm;
         }
 
-        public KeyValuePair<Image, Image> AddTop(KeyValuePair<Image, Image> elm)
+        protected KeyValuePair<Image, Image> AddTop(KeyValuePair<Image, Image> elm)
         {
             if (elm.Value != null)
             {
@@ -472,7 +579,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
             else return elms;
         }
 
-        public List<KeyValuePair<Image, Image>> AddTopRange(List<KeyValuePair<Image, Image>> elms)
+        protected List<KeyValuePair<Image, Image>> AddTopRange(List<KeyValuePair<Image, Image>> elms)
         {
             if (elms != null)
             {
@@ -485,7 +592,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
             else return elms;
         }
 
-        public List<KeyValuePair<Image, Image>> AddBackRange(List<KeyValuePair<Image, Image>> elms)
+        protected List<KeyValuePair<Image, Image>> AddBackRange(List<KeyValuePair<Image, Image>> elms)
         {
             if (elms != null)
             {
@@ -547,6 +654,18 @@ namespace ModuleBOARD.Elements.Lots.Piles
             return PutAt(elm, 0);
         }*/
 
+        protected void MettreAJourEtat()
+        {
+            if(EstDansEtat(EEtat.À_l_envers))
+            {
+                if (Courrante >= 0) Courrante = ~Courrante;
+            }
+            else
+            {
+                if (Courrante < 0) Courrante = ~Courrante;
+            }
+        }
+
         public override void MajEtat(EEtat nouvEtat)
         {
             if (AEtatChangé(EEtat.À_l_envers, nouvEtat))
@@ -562,7 +681,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
             {
                 if (Courrante < 0)
                 {
-                    Courrante = ~Courrante;//On montre
+                    //Courrante = ~Courrante;//On montre
                     base.Révéler();
                 }
                 else if (delta < 0)
@@ -581,14 +700,21 @@ namespace ModuleBOARD.Elements.Lots.Piles
             return true;
         }
 
-        override public ContextMenu Menu(Control ctrl)
+        override public ContextMenu Menu(IBoard ctrl)
         {
             ContextMenu cm = base.Menu(ctrl);
             if (cm == null) cm = new ContextMenu();
+
+            MenuItem nbc = new MenuItem((Images?.Count ?? 0) + " carte(s)");
+            int idx;
+            for (idx = 0; idx < cm.MenuItems.Count && cm.MenuItems[idx].Text != "État"; ++idx) ;
+            if (idx < cm.MenuItems.Count) cm.MenuItems[idx].MenuItems.Add(0, nbc);
+            else cm.MenuItems.Add(new MenuItem("État", new MenuItem[1] { nbc }));
+
             cm.MenuItems.AddRange(new MenuItem []
                     {
-                        new MenuItem("Mélanger", new EventHandler((o,e) => {Mélanger(); ctrl.Refresh(); })),
-                        /*new MenuItem("Ranger", new EventHandler((o,e) => {Board.RangerVersParent(this); ctrl.Refresh(); }))*/
+                        new MenuItem("Mélanger", new EventHandler((o,e) => { ctrl.Mélanger(this);/*Mélanger(); ctrl.Refresh();*/ })),
+                        new MenuItem("Ranger", new EventHandler((o,e) => {ctrl.RangerVersParent(this); }))
                     });
             return cm;
         }
@@ -625,5 +751,38 @@ namespace ModuleBOARD.Elements.Lots.Piles
             else return false;
         }
 
+        public Pile(Stream stream, IRessourcesDésérialiseur resscDes)
+            : base(stream, resscDes)
+        {
+            Courrante = stream.ReadInt();
+            PileVide = resscDes.RécupérerImage(stream);
+            ushort nbc = BitConverter.ToUInt16(stream.GetBytes(2), 0);
+            if (nbc > 0)
+            {
+                Images = new List<KeyValuePair<Image, Image>>(nbc);
+                for (ushort i = 0; i < nbc; ++i)
+                    Images.Add(new KeyValuePair<Image, Image> (resscDes.RécupérerImage(stream), resscDes.RécupérerImage(stream)));
+            }
+            else Images = null;
+        }
+
+        override public void Serialiser(Stream stream, ref int gidr)
+        {
+            base.Serialiser(stream, ref gidr);
+            stream.WriteBytes(BitConverter.GetBytes(Courrante));
+            stream.SerialiserObject(PileVide?.Tag as string ?? "", typeof(string));
+            ushort nbc = (ushort)(Images?.Count ?? 0);
+            stream.WriteBytes(BitConverter.GetBytes(nbc));
+            for(ushort i = 0; i < nbc; ++i)
+            {
+                stream.SerialiserObject(Images[i].Key?.Tag as string ?? "", typeof(string));
+                stream.SerialiserObject(Images[i].Value?.Tag as string ?? "", typeof(string));
+            }
+        }
+
+        /*override public void SerialiserTout(Stream stream, ref int gidr, ISet<int> setIdRéseau)
+        {
+            base.SerialiserTout(stream, ref gidr, setIdRéseau);
+        }*/
     }
 }

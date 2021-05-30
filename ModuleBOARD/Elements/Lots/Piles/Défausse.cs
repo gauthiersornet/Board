@@ -1,8 +1,10 @@
 ﻿using ModuleBOARD.Elements.Base;
 using ModuleBOARD.Elements.Pieces;
+using ModuleBOARD.Réseau;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
@@ -12,10 +14,37 @@ namespace ModuleBOARD.Elements.Lots.Piles
 {
     public class Défausse : Pile
     {
+        public override EType ElmType { get => EType.Défausse; }
+
         public Pioche Pioche = null;
         private Dictionary<KeyValuePair<Image, Image>, Pioche> dicoParents = null;
 
         Défausse() { }
+
+        public Défausse(int idREz) : base(idREz) { }
+
+        public Défausse(Pioche pioch) : base(pioch as Element)
+        {
+            /* if (pioch.PileVide != null) PileVide = pioch.PileVide;
+             else if (pioch.Images != null)
+             {
+                 KeyValuePair<Image, Image> crt = pioch.Images.FirstOrDefault(x => x.Key != null || x.Value != null);
+                 Image img = crt.Key ?? crt.Value;
+                 if (img != null) PileVide = BibliothèqueImage.InitImageVide(img.Width, img.Height);
+                 else PileVide = null;
+             }
+             else PileVide = null;*/
+            PileVide = pioch.TrouverUneImage();
+            if (PileVide == null) PileVide = BibliothèqueImage.ImageVide;
+
+            PointF sz;
+            if (PileVide == null) sz = GC.ProjSize(new PointF(20.0f, 20.0f));
+            //else if (PileVide.Width > PileVide.Height) GC.P.Y += PileVide.Height + 10;
+            else sz = GC.ProjSize(new PointF(PileVide.Width, PileVide.Height)); ;
+
+            GC.P.X += sz.X + 5;
+            MettreAJourEtat();
+        }
 
         public Défausse(Défausse elm)
             : base(elm)
@@ -30,7 +59,14 @@ namespace ModuleBOARD.Elements.Lots.Piles
         {
         }
 
-        public void MettreEnPioche()
+        override public object MettreAJour(object obj)
+        {
+            if (Pioche != null && obj is Pioche && (obj as Pioche).IdentifiantRéseau == Pioche.IdentifiantRéseau)
+                Pioche = obj as Pioche;
+            return base.MettreAJour(obj);
+        }
+
+        public void ReMettreDansLaPioche()
         {
             if(Pioche != null)
             {
@@ -58,12 +94,12 @@ namespace ModuleBOARD.Elements.Lots.Piles
             }
         }
 
-        override public ContextMenu Menu(Control ctrl)
+        override public ContextMenu Menu(IBoard ctrl)
         {
             ContextMenu cm = base.Menu(ctrl);
             if (cm == null) cm = new ContextMenu();
             if(Pioche!=null || dicoParents != null)
-                cm.MenuItems.Add("Remettre en pioche", new EventHandler((o, e) => { MettreEnPioche(); ctrl.Refresh(); }));
+                cm.MenuItems.Add("Remettre dans la pioche", new EventHandler((o, e) => { ctrl.ReMettreDansPioche(this); }));
             return cm;
         }
 
@@ -81,10 +117,10 @@ namespace ModuleBOARD.Elements.Lots.Piles
         }
 
         //public override Element MousePiocheAt(PointF mp, float angle)
-        public override Element MousePioche()
+        public override Element MousePioche(int index = int.MaxValue)
         {
             //Element elm = base.MousePiocheAt(mp, angle);
-            Element elm = base.MousePioche();
+            Element elm = base.MousePioche(index);
             if (elm != null)
             {
                 if (Pioche != null) elm.Parent = Pioche;
@@ -146,8 +182,12 @@ namespace ModuleBOARD.Elements.Lots.Piles
         {
             if (elm == this)
             {
-                if (Pioche != null) Pioche.SuppressionDéfausse(this);
-                else if(dicoParents != null)
+                if (Pioche != null)
+                {
+                    Pioche.SuppressionDéfausse(this);
+                    Pioche = null;
+                }
+                if(dicoParents != null)
                 {
                     foreach (var kv in dicoParents) kv.Value.SuppressionDéfausse(this);
                     dicoParents = null;
@@ -158,21 +198,26 @@ namespace ModuleBOARD.Elements.Lots.Piles
             {
                 if (elm is Pioche)
                 {
-                    bool still;
-                    do
+                    if (Pioche == elm && (Images == null || Images.Any() == false))
+                        return this;
+                    else if(dicoParents != null)
                     {
-                        still = false;
-                        foreach (var kv in dicoParents)
+                        bool still;
+                        do
                         {
-                            if (Object.ReferenceEquals(kv.Value, elm))
+                            still = false;
+                            foreach (var kv in dicoParents)
                             {
-                                dicoParents.Remove(kv.Key);
-                                still = true;
-                                break;
+                                if (Object.ReferenceEquals(kv.Value, elm))
+                                {
+                                    dicoParents.Remove(kv.Key);
+                                    still = true;
+                                    break;
+                                }
                             }
-                        }
-                    } while (still);
-                    if (dicoParents.Any() == false) dicoParents = null;
+                        } while (still);
+                        if (dicoParents.Any() == false) dicoParents = null;
+                    }
                 }
                 return base.Suppression(elm);
             }
@@ -181,6 +226,25 @@ namespace ModuleBOARD.Elements.Lots.Piles
         override public object Clone()
         {
             return new Défausse(this);
+        }
+
+        public Défausse(Stream stream, IRessourcesDésérialiseur resscDes)
+            : base(stream, resscDes)
+        {
+            //Pioche = resscDes.Rechercher(BitConverter.ToInt32(stream.GetBytes(4), 0)) as Pioche;
+            Pioche = resscDes.RetrouverPioche(stream);
+        }
+
+        override public void Serialiser(Stream stream, ref int gidr)
+        {
+            base.Serialiser(stream, ref gidr);
+            stream.SerialiserRefElement(Pioche, ref gidr);
+        }
+
+        override public void SerialiserTout(Stream stream, ref int gidr, ISet<int> setIdRéseau)
+        {
+            stream.SerialiserTout(Pioche, ref gidr, setIdRéseau);
+            base.SerialiserTout(stream, ref gidr, setIdRéseau);
         }
     }
 }

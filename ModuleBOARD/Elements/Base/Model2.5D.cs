@@ -1,6 +1,8 @@
-﻿using System;
+﻿using ModuleBOARD.Réseau;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -21,8 +23,14 @@ namespace ModuleBOARD.Elements.Base
             mod.Tag = sig;
             mod.imagesDessus = mod.imagesDessous = new Image[8];
             for (int i = 0; i < mod.imagesDessus.Length; ++i)
-                mod.imagesDessus[i] = BibliothèqueImage.EmptyImage;
+                mod.imagesDessus[i] = BibliothèqueImage.ImageVide;
             return mod;
+        }
+
+        public bool EstConnue
+        {
+            get =>  (imagesDessus != null && imagesDessus.Any(img => img != BibliothèqueImage.ImageVide)) ||
+                    (imagesDessous != null && imagesDessous.Any(img => img != BibliothèqueImage.ImageVide));
         }
 
         static public Model2_5D ChargerModel2_5D(string path, XmlNode paq, BibliothèqueImage bibliothèqueImage)
@@ -33,7 +41,7 @@ namespace ModuleBOARD.Elements.Base
                 MD5 md5Hash = MD5.Create();
                 Model2_5D modl = new Model2_5D();
                 string strNbl = paq.Attributes?.GetNamedItem("nbl")?.Value;
-                List<Image> Images = bibliothèqueImage.LoadSImages(path, fileImg, paq);
+                List<Image> Images = bibliothèqueImage.LoadSImages(path, fileImg, paq).Select(img => { var b = new Bitmap(img); b.Tag = img.Tag; b.MakeTransparent(); return (Image)b; }).ToList();
                 int accw = 0;
                 int acch = 0;
                 foreach (Image img in Images)
@@ -49,7 +57,12 @@ namespace ModuleBOARD.Elements.Base
                     {
                         accw += img.Width;
                         acch += img.Height;
-                        if (img.Width > 0 && img.Height > 0) btmap.MakeTransparent();//btmap.GetPixel(0, 0)
+                        /*if (img.Width > 0 && img.Height > 0)
+                        {
+                            // btmap.MakeTransparent();//btmap.GetPixel(0, 0)
+                            btmap = new Bitmap(btmap);
+                            btmap.MakeTransparent();
+                        }*/
                     }
                 }
                 md5Hash.TransformFinalBlock(new byte[0], 0, 0);
@@ -107,6 +120,51 @@ namespace ModuleBOARD.Elements.Base
             Tag = mod.Tag;
             imagesDessus = mod.imagesDessus;
             imagesDessous = mod.imagesDessous;
+        }
+
+        public Model2_5D(Stream stream, BibliothèqueImage bibImg)
+        {
+            Tag = stream.ReadString();
+            imagesDessus = (stream.ReadObject(typeof(string[])) as string[]).Select(s => (s!=null && s.Length>=28 ? bibImg.RécupérerOuCréerImage(s) : null)).ToArray();
+            if (imagesDessus.Length == 0) imagesDessus = null;
+            imagesDessous = (stream.ReadObject(typeof(string[])) as string[]).Select(s => (s != null && s.Length >= 28 ? bibImg.RécupérerOuCréerImage(s) : null)).ToArray();
+            if (imagesDessous.Length == 0) imagesDessous = null;
+        }
+
+        public void MettreAJour(Image img)
+        {
+            if(imagesDessus != null)
+            {
+                for (int i = 0; i < imagesDessus.Length; ++i)
+                    if (imagesDessus[i] != null && String.Equals(img.Tag as string, imagesDessus[i].Tag as string))
+                    {
+                        Bitmap b = new Bitmap(img);
+                        b.Tag = img.Tag;
+                        b.MakeTransparent();
+                        imagesDessus[i] = b;
+                    }
+            }
+            if (imagesDessous != null)
+            {
+                for (int i = 0; i < imagesDessous.Length; ++i)
+                    if (imagesDessous[i] != null && String.Equals(img.Tag as string, imagesDessous[i].Tag as string))
+                    {
+                        Bitmap b = new Bitmap(img);
+                        b.Tag = img.Tag;
+                        b.MakeTransparent();
+                        imagesDessous[i] = b;
+                    }
+            }
+        }
+
+        public Stream Sérialiser(Stream stream)
+        {
+            stream.SerialiserObject(Tag ?? "");
+            if(imagesDessus != null) stream.SerialiserObject(imagesDessus);
+            else stream.SerialiserObject((ushort)0);
+            if (imagesDessous != null) stream.SerialiserObject(imagesDessous);
+            else stream.SerialiserObject((ushort)0);
+            return stream;
         }
 
         static public int AngToIdx(float ang) { return (8 + (int)((ang - 45.0f / 2) / 45.0f + 0.5f)) % 8; }
