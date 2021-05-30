@@ -63,16 +63,18 @@
             this.txtNomServeur.Location = new System.Drawing.Point(88, 9);
             this.txtNomServeur.Name = "txtNomServeur";
             this.txtNomServeur.Size = new System.Drawing.Size(390, 22);
-            this.txtNomServeur.TabIndex = 2;
+            this.txtNomServeur.TabIndex = 0;
             this.txtNomServeur.Text = "Localhost";
+            this.txtNomServeur.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.GKeyPress);
             // 
             // txtNumPort
             // 
             this.txtNumPort.Location = new System.Drawing.Point(88, 35);
             this.txtNumPort.Name = "txtNumPort";
             this.txtNumPort.Size = new System.Drawing.Size(390, 22);
-            this.txtNumPort.TabIndex = 3;
+            this.txtNumPort.TabIndex = 1;
             this.txtNumPort.Text = "8080";
+            this.txtNumPort.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.GKeyPress);
             // 
             // label2
             // 
@@ -89,7 +91,8 @@
             this.txtIdentifiant.MaxLength = 30;
             this.txtIdentifiant.Name = "txtIdentifiant";
             this.txtIdentifiant.Size = new System.Drawing.Size(379, 22);
-            this.txtIdentifiant.TabIndex = 6;
+            this.txtIdentifiant.TabIndex = 2;
+            this.txtIdentifiant.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.GKeyPress);
             // 
             // label9
             // 
@@ -107,7 +110,8 @@
             this.txtPwdConnect.Name = "txtPwdConnect";
             this.txtPwdConnect.PasswordChar = '*';
             this.txtPwdConnect.Size = new System.Drawing.Size(360, 22);
-            this.txtPwdConnect.TabIndex = 20;
+            this.txtPwdConnect.TabIndex = 3;
+            this.txtPwdConnect.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.GKeyPress);
             // 
             // btConnecter
             // 
@@ -141,6 +145,9 @@
             this.MaximizeBox = false;
             this.Name = "ConnectForm";
             this.Text = "Connexion";
+            this.TopMost = true;
+            this.Shown += new System.EventHandler(this.ConnectForm_Shown);
+            this.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.GKeyPress);
             this.ResumeLayout(false);
             this.PerformLayout();
 

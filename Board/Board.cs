@@ -1,5 +1,6 @@
 ﻿using ModuleBOARD.Elements.Base;
 using ModuleBOARD.Elements.Lots;
+using ModuleBOARD.Elements.Lots.Piles;
 using ModuleBOARD.Elements.Pieces;
 using ModuleBOARD.Réseau;
 using System;
@@ -7,6 +8,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Numerics;
@@ -17,7 +19,6 @@ using System.Xml;
 
 
 /* TODO
- * Bien synchro les éléments sur l'état !
  * Faire un objet spéciale qui contient des éléments et appartient à un joueur style paravent ou main... main accessible en raccourci au bas de l'écran !
  * Lorqu'un élément est relaché sur 2, le glisser entre
  * Faire un système de cadrillage carré/hexa
@@ -30,7 +31,7 @@ using System.Xml;
 
 namespace Board
 {
-    public partial class Board : Form
+    public partial class Board : Form, IBoard
     {
         //static private int NetworkBoardCounter = 0;
 
@@ -38,88 +39,35 @@ namespace Board
         static private readonly int POS_RND_AMP = 100;
         static private readonly float CLICK_SEUIL = 5.0f;
 
-        private BibliothèqueImage bibliothèqueImage = new BibliothèqueImage();
-        private BibliothèqueModel bibliothèqueModel = new BibliothèqueModel();
+        public BibliothèqueImage bibliothèqueImage = new BibliothèqueImage();
+        public BibliothèqueModel bibliothèqueModel = new BibliothèqueModel();
 
-        private ClientThreadBoard connection = null;
+        private ClientThreadBoard connexion = null;
 
         public GérerSessions jSession { get; private set; }
 
-        static public Element RangerVersParent(Element parent)
-        {
-            lock(Boards)
-            {
-                foreach (Board brd in Boards)
-                {
-                    brd.root.RangerVersParent(parent);
-                    brd.Refresh();
-                }
-                return null;
-            }
-        }
-        static public Element DéfausserElement(Element relem)
-        {
-            lock (Boards)
-            {
-                foreach (Board brd in Boards)
-                {
-                    Element elm = brd.root.DéfausserElement(relem);
-                    if (elm != null)
-                    {
-                        //brd.Refresh();
-                        Rafraichir();
-                        return elm;
-                    }
-                }
-            }
-            return null;
-        }
-
-        static public Element DétacherElement(Element relem)
-        {
-            lock (Boards)
-            {
-                foreach (Board brd in Boards)
-                {
-                    Element elm = brd.root.DétacherElement(relem);
-                    if (elm != null)
-                    {
-                        brd.Refresh();
-                        return elm;
-                    }
-                }
-            }
-            return null;
-        }
-
-        static public Element Rafraichir()
-        {
-            lock (Boards)
-            {
-                foreach (Board brd in Boards)
-                    brd.Refresh();
-            }
-            return null;
-        }
-
         /*private PointF P;
         private float Echelle;*/
-        int NetworkBoardId = -1;
+        int GIdElémentRéseau = -1;
         //ulong NetworkElementCounter = 0;
 
         GeoVue GV;
         private Groupe root;
+        private Joueur joueur;
+        private Dictionary<ushort, Joueur> DicoJoueurs;
 
         //private PointF SelectedStartP;
-        private Board ElmOnBoard_LEFT;
+        //private Board ElmOnBoard_LEFT;
         private PointF ClickP_LEFT;
         private PointF SelectedP_LEFT;
-        private Element SelectedElm_LEFT;
+        //private Element SelectedElm_LEFT;
+        private int idAttrapeEnCours;
 
-        private Board ElmOnBoard_RIGHT;
+        //private Board ElmOnBoard_RIGHT;
         private PointF ClickP_RIGHT;
         private PointF SelectedP_RIGHT;
-        private Element SelectedElm_RIGHT;
+        private MouseButtons MouseBt;
+        //private Element SelectedElm_RIGHT;
 
         private bool Ctrl_Down;
         private bool Shift_Down;
@@ -128,16 +76,24 @@ namespace Board
         {
             GV = new GeoVue(0.0f, 0.0f, 1.0f, 0.0f, this.Width, this.Height);
             root = new Groupe();
+            joueur = new Joueur();
+            DicoJoueurs = null;
             //root.LstElements = new List<Element>();
-            SelectedElm_LEFT = null;
-            SelectedElm_RIGHT = null;
-            ElmOnBoard_LEFT = null;
-            ElmOnBoard_RIGHT = null;
+            //SelectedElm_LEFT = null;
+            idAttrapeEnCours = 0;
+            MouseBt = MouseButtons.None;
+            //SelectedElm_RIGHT = null;
+            //ElmOnBoard_LEFT = null;
+            //ElmOnBoard_RIGHT = null;
             Ctrl_Down = false;
             Shift_Down = false;
             InitializeComponent();//Win size 1936x1056
             this.MouseWheel += new MouseEventHandler(this.Board_MouseWheel);
             this.Text = name;
+
+            /*byte[] bts = new byte[16];
+            new Random().NextBytes(bts);
+            string str = bts.Aggregate("", (a, b) => a + ", "+ b);*/
         }
 
         private void Board_DragEnter(object sender, DragEventArgs e)
@@ -187,12 +143,19 @@ namespace Board
                     Element newElm;
                     string fileNameEnd = fnm.ToUpper().Trim();
                     if(fileNameEnd.Length >= 4) fileNameEnd = fileNameEnd.Substring(fileNameEnd.Length-4, 4);
-                    if (fileNameEnd == ".XML")
-                        newElm = LoadXML(fullName, p);
+                    if (fileNameEnd == ".XML") newElm = LoadXML(fullName, p);
                     else if(ImageExtention.Contains(fileNameEnd)) newElm = new Element2D(path, fnm, p, bibliothèqueImage);
                     else newElm = null;
 
-                    if (newElm != null) root.Fusionner(newElm);
+                    if (newElm != null)
+                    {
+                        //On est connecté à une session ?
+                        if(connexion != null && connexion.NomSession != null)
+                        {
+                            connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.ChargerElement, new SortedSet<int>(), ref GIdElémentRéseau, newElm);
+                        }
+                        root.Fusionner(newElm);
+                    }
                     /*{
                         PointF size = newElm.Size;
                         newElm.GC.P.X -= size.X / 2.0f;
@@ -205,7 +168,7 @@ namespace Board
             }
         }
 
-        private Groupe LoadXML(string file, PointF p)
+        private Element LoadXML(string file, PointF p)
         {
             XmlDocument doc = new XmlDocument();
             try { doc.Load(file); }
@@ -227,7 +190,8 @@ namespace Board
             if (l >= 0) path = file.Substring(0, l + 1);
             else path = "";
 
-            return new Groupe(path, doc, p, null, bibliothèqueImage, bibliothèqueModel);
+            return Element.Charger(path, doc.ChildNodes.Item(0), p, null, bibliothèqueImage, bibliothèqueModel);
+            //return new Groupe(path, doc.ChildNodes.Item(0), p, null, bibliothèqueImage, bibliothèqueModel);
         }
 
         /*private void Redessiner(Graphics g)
@@ -250,51 +214,41 @@ namespace Board
             g.TranslateTransform(-GV.GC.P.X, -GV.GC.P.Y);
             root.Dessiner(vue, GV.GC.A, g, new PointF(0.0f, 0.0f));
 
-            if (SelectedElm_LEFT != null && ElmOnBoard_LEFT == this)
-                SelectedElm_LEFT.Dessiner(vue, GV.GC.A, g, new PointF(0.0f, 0.0f));
+            //if (SelectedElm_LEFT != null /*&& ElmOnBoard_LEFT == this*/)
+            //    SelectedElm_LEFT.Dessiner(vue, GV.GC.A, g, SelectedP_LEFT);
+            if (joueur != null) joueur.Dessiner(vue, GV.GC.A, g);
         }
 
         private void Board_MouseDown(object sender, MouseEventArgs e)
         {
+            MouseBt |= e.Button;
             if (e.Button.HasFlag(MouseButtons.Left) || e.Button.HasFlag(MouseButtons.Right))
             {
                 //PointF pt = new PointF((e.Location.X / GC.E), (e.Location.Y / GC.E));
                 PointF pt = GV.Projection(e.Location);
                 if (e.Button.HasFlag(MouseButtons.Left))
                 {
-                    ElmOnBoard_LEFT = this;
+                    //ElmOnBoard_LEFT = this;
                     ClickP_LEFT = e.Location;
                     SelectedP_LEFT = pt;
-                    if (SelectedElm_RIGHT == null && Ctrl_Down == false && Shift_Down == false)
-                    {
-                        //Element elm = root.MousePiocheAt(pt, GV.GC.A);
-                        Element elm, conteneur;
-                        (elm, conteneur) = root.MousePickAvecContAt(pt, GV.GC.A, Element.EPickUpAction.Déplacer);
-                        SelectedElm_LEFT = elm?.MousePioche();
-                        if (SelectedElm_LEFT != null)
-                        {
-                            if (conteneur != null)
-                            {
-                                if (SelectedElm_LEFT == elm) conteneur.DétacherElement(elm);
-                                else
-                                {
-                                    SelectedElm_LEFT.GC.P.X += conteneur.GC.P.X;
-                                    SelectedElm_LEFT.GC.P.Y += conteneur.GC.P.Y;
-                                }
-                            }
-                            SelectedP_LEFT = pt;
-                            this.Refresh();
-                        }
-                    }
-                    else SelectedElm_LEFT = null;
+                    //joueur.P = pt;
+                    //if (/*SelectedElm_RIGHT == null &&*/ Ctrl_Down == false && Shift_Down == false)
+                    //{
+                    //Element elm = root.MousePiocheAt(pt, GV.GC.A);
+                    Element elm, conteneur;
+                    (elm, conteneur) = root.MousePickAvecContAt(pt, GV.GC.A, Element.EPickUpAction.Déplacer);
+                    if (Shift_Down) AttraperElément(conteneur, elm, pt);//Si shift est done alors on prent l'élément !
+                    else PiocherElément(conteneur, elm, pt);// SelectedElm_LEFT = elm?.MousePioche();
+                    //}
+                    //else SelectedElm_LEFT = null;
                 }
                 if (e.Button.HasFlag(MouseButtons.Right))
                 {
-                    ElmOnBoard_RIGHT = this;
+                    //ElmOnBoard_RIGHT = this;
                     ClickP_RIGHT = e.Location;
                     SelectedP_RIGHT = pt;
 
-                    if (SelectedElm_LEFT != null || Ctrl_Down == true || Shift_Down == true)
+                    /*if (SelectedElm_LEFT != null || Ctrl_Down == true || Shift_Down == true)
                         SelectedElm_RIGHT = null;
                     else
                     {
@@ -304,69 +258,64 @@ namespace Board
                             root.PutOnTop(SelectedElm_RIGHT);
                             this.Refresh();
                         }
-                    }
+                    }*/
                 }
             }
         }
 
         private void Board_MouseUp(object sender, MouseEventArgs e)
         {
-            if (e.Button.HasFlag(MouseButtons.Left))
+            MouseBt &= ~e.Button;
+            if (e.Button.HasFlag(MouseButtons.Left) && Ctrl_Down == false)
             {
-                if (SelectedElm_LEFT != null)
+                if (joueur != null && joueur.AElementAttrapé)
                 {
-                    if (ElmOnBoard_LEFT == null) ElmOnBoard_LEFT = this;
-                    Point abp = new Point(this.Left + e.X - ElmOnBoard_LEFT.Left, this.Top + e.Y - ElmOnBoard_LEFT.Top);
-                    Element elmAt = ElmOnBoard_LEFT.root.MousePickAt(ElmOnBoard_LEFT.GV.Projection(abp), GV.GC.A);
-                    if (elmAt != null)
-                    {
-                        SelectedElm_LEFT = elmAt.ElementLaché(SelectedElm_LEFT);
-                        if (SelectedElm_LEFT != null)
-                            //ElmOnBoard_LEFT.root.AddTop(SelectedElm_LEFT);
-                            ElmOnBoard_LEFT.root.ElementLaché(SelectedElm_LEFT);
-                    }
-                    //else ElmOnBoard_LEFT.root.AddTop(SelectedElm_LEFT);
-                    else ElmOnBoard_LEFT.root.ElementLaché(SelectedElm_LEFT);
-                    Board brd = ElmOnBoard_LEFT;
-                    brd.SelectedElm_LEFT = null;
-                    brd.ElmOnBoard_LEFT = null;
-                    brd.Refresh();
+                    //if (ElmOnBoard_LEFT == null) ElmOnBoard_LEFT = this;
+                    Point abp = new Point(this.Left + e.X - /*ElmOnBoard_LEFT.*/Left, this.Top + e.Y - /*ElmOnBoard_LEFT.*/Top);
+                    PointF pt = GV.Projection(abp);
+                    Element elmAt = /*ElmOnBoard_LEFT.*/root.MousePickAt(/*ElmOnBoard_LEFT.*/pt, GV.GC.A);
+                    if (elmAt == null) elmAt = root;
+                    LacherElément(elmAt, pt);
+                    //Board brd = ElmOnBoard_LEFT;
+                    /*brd.*///SelectedElm_LEFT = null;
+                    //brd.ElmOnBoard_LEFT = null;
+                    /*brd.*///Refresh();
                 }
 
-                SelectedElm_LEFT = null;
-                ElmOnBoard_LEFT = null;
+                //SelectedElm_LEFT = null;
+                //ElmOnBoard_LEFT = null;
             }
             if (e.Button.HasFlag(MouseButtons.Right))
             {
-                if (SelectedElm_RIGHT != null)
+                /*if (SelectedElm_RIGHT != null)
                 {
-                    if (ElmOnBoard_RIGHT == null) ElmOnBoard_RIGHT = this;
-                    Point abp = new Point(this.Left + e.X - ElmOnBoard_RIGHT.Left, this.Top + e.Y - ElmOnBoard_RIGHT.Top);
-                    float svE = SelectedElm_RIGHT.GC.E;
-                    SelectedElm_RIGHT.GC.E = 0.0f;
-                    Element elmAt = ElmOnBoard_RIGHT.root.MousePickAt(ElmOnBoard_RIGHT.GV.Projection(abp), GV.GC.A);
-                    SelectedElm_RIGHT.GC.E = svE;
-                    if (elmAt != null && elmAt != SelectedElm_RIGHT)
-                    {
-                        if (elmAt.ElementLaché(SelectedElm_RIGHT) == null)
-                        {
-                            Board.DétacherElement(SelectedElm_RIGHT);
-                        }
-                        else if(SelectedElm_RIGHT is IFigurine)
-                        {
-                            ElmOnBoard_RIGHT.root.MettreAJourZOrdre(SelectedElm_RIGHT as IFigurine);
-                        }
-                        SelectedElm_RIGHT = null;
-                    }
+                    //if (ElmOnBoard_RIGHT == null) ElmOnBoard_RIGHT = this;
+                    //Point abp = new Point(this.Left + e.X - ElmOnBoard_RIGHT.Left, this.Top + e.Y - ElmOnBoard_RIGHT.Top);
+                    //float svE = SelectedElm_RIGHT.GC.E;
+                    //SelectedElm_RIGHT.GC.E = 0.0f;
+                    //Element elmAt = ElmOnBoard_RIGHT.root.MousePickAt(ElmOnBoard_RIGHT.GV.Projection(abp), GV.GC.A);
+                    //SelectedElm_RIGHT.GC.E = svE;
+                    //if (elmAt != null && elmAt != SelectedElm_RIGHT)
+                    //{
+                    //    if (elmAt.ElementLaché(SelectedElm_RIGHT) == null)
+                    //    {
+                    //        Board.DétacherElement(SelectedElm_RIGHT);
+                    //    }
+                    //    else if(SelectedElm_RIGHT is IFigurine)
+                    //    {
+                    //        ElmOnBoard_RIGHT.root.MettreAJourZOrdre(SelectedElm_RIGHT as IFigurine);
+                    //    }
+                    //    SelectedElm_RIGHT = null;
+                    //}
 
                     Board brd = ElmOnBoard_RIGHT;
                     brd.SelectedElm_RIGHT = null;
-                    brd.ElmOnBoard_RIGHT = null;
+                    //brd.ElmOnBoard_RIGHT = null;
                     brd.Refresh();
-                }
+                }*/
 
-                SelectedElm_RIGHT = null;
-                ElmOnBoard_RIGHT = null;
+                //SelectedElm_RIGHT = null;
+                //ElmOnBoard_RIGHT = null;
             }
         }
 
@@ -378,128 +327,41 @@ namespace Board
 
         private void Board_MouseMove(object sender, MouseEventArgs e)
         {
-            if (e.Button.HasFlag(MouseButtons.Left) || e.Button.HasFlag(MouseButtons.Right))
+            if (e.Button.HasFlag(MouseButtons.Right))
             {
-                if (e.Button.HasFlag(MouseButtons.Right))
+                PointF pt = GV.Projection(e.Location);
+                GV.GC.P.X -= (pt.X - SelectedP_RIGHT.X);
+                GV.GC.P.Y -= (pt.Y - SelectedP_RIGHT.Y);
+                this.Refresh();
+            }
+            if (joueur != null && joueur.AElementAttrapé)
+            {
+                //if (/*e.Button.HasFlag(MouseButtons.Left) || Shift_Down || Ctrl_Down*/)
                 {
-                    if (SelectedElm_RIGHT != null)
-                    {
-                        Point abp = new Point(this.Left + e.X, this.Top + e.Y);
+                    Point abp = new Point(this.Left + e.X, this.Top + e.Y);
 
-                        if (ElmOnBoard_RIGHT == null) ElmOnBoard_RIGHT = this;
-                        lock (Boards)
-                        {
-                            /*if (ElmOnBoard_RIGHT.IsMouseInner(abp) == false)
-                            {
-                                foreach(Board brd in Boards)
-                                    if(brd != ElmOnBoard_RIGHT && brd.IsMouseInner(abp))
-                                    {
-                                        ElmOnBoard_RIGHT.root.DétacherElement(SelectedElm_RIGHT);
-                                        Point DltMP = new Point(abp.X - brd.Left, abp.Y - brd.Top);
-                                        PointF DlElmP = new PointF(
-                                                SelectedElm_RIGHT.GC.P.X- SelectedP_RIGHT.X,
-                                                SelectedElm_RIGHT.GC.P.Y- SelectedP_RIGHT.Y
-                                            );
-                                        SelectedP_RIGHT = brd.GV.Projection(DltMP);
-                                        SelectedElm_RIGHT.GC.P.X = SelectedP_RIGHT.X + DlElmP.X;
-                                        SelectedElm_RIGHT.GC.P.Y = SelectedP_RIGHT.Y + DlElmP.Y;
-
-                                        brd.SelectedElm_RIGHT = ElmOnBoard_RIGHT.SelectedElm_RIGHT;
-                                        brd.root.AddTop(SelectedElm_RIGHT);
-                                        if (ElmOnBoard_RIGHT != this)
-                                        {
-                                            ElmOnBoard_RIGHT.ElmOnBoard_RIGHT = null;
-                                            ElmOnBoard_RIGHT.SelectedElm_RIGHT = null;
-                                            ElmOnBoard_RIGHT.Refresh();
-                                            ElmOnBoard_RIGHT = brd;
-                                            brd.ElmOnBoard_RIGHT = brd;
-                                        }
-                                        else
-                                        {
-                                            ElmOnBoard_RIGHT = brd;
-                                            this.Refresh();
-                                            brd.ElmOnBoard_RIGHT = brd;
-                                        }
-                                        break; 
-                                    }
-                            }*/
-                            if(SelectedElm_RIGHT is IFigurine) ElmOnBoard_RIGHT.root.MettreAJourZOrdre(SelectedElm_RIGHT as IFigurine);
-                        }
-                        
-
-                        PointF pt = ElmOnBoard_RIGHT.GV.Projection(new Point(abp.X - ElmOnBoard_RIGHT.Left, abp.Y - ElmOnBoard_RIGHT.Top));
-                        SelectedElm_RIGHT.GC.P.X += (pt.X - SelectedP_RIGHT.X);
-                        SelectedElm_RIGHT.GC.P.Y += (pt.Y - SelectedP_RIGHT.Y);
-                        SelectedP_RIGHT = pt;
-                        ElmOnBoard_RIGHT.Refresh();
-                    }
-                    else if(ElmOnBoard_RIGHT == this)
-                    {
-                        PointF pt = GV.Projection(e.Location);
-                        GV.GC.P.X -= (pt.X - SelectedP_RIGHT.X);
-                        GV.GC.P.Y -= (pt.Y - SelectedP_RIGHT.Y);
-                        this.Refresh();
-                    }
+                    PointF pt = /*ElmOnBoard_LEFT.*/GV.Projection(new Point(abp.X - /*ElmOnBoard_LEFT.*/Left, abp.Y - /*ElmOnBoard_LEFT.*/Top));
+                    // SelectedElm_LEFT.GC.P.X += (pt.X - SelectedP_LEFT.X);
+                    // SelectedElm_LEFT.GC.P.Y += (pt.Y - SelectedP_LEFT.Y);
+                    joueur.P = pt;
+                    /*ElmOnBoard_LEFT.*/
+                    Refresh();
                 }
-                if (e.Button.HasFlag(MouseButtons.Left))
-                {
-                    if (SelectedElm_LEFT != null)
-                    {
-                        Point abp = new Point(this.Left + e.X, this.Top + e.Y);
-
-                        if (ElmOnBoard_LEFT == null) ElmOnBoard_LEFT = this;
-                        /*if (ElmOnBoard_LEFT.IsMouseInner(abp) == false)
-                        {
-                            lock (Boards)
-                            {
-                                foreach (Board brd in Boards)
-                                    if (ElmOnBoard_LEFT != brd && brd.IsMouseInner(abp))
-                                    {
-                                        //ElmOnBoard_LEFT.root.DétacherElement(SelectedElm_LEFT);
-                                        Point DltMP = new Point(abp.X - brd.Left, abp.Y - brd.Top);
-                                        PointF DlElmP = new PointF(
-                                                SelectedElm_LEFT.GC.P.X - SelectedP_LEFT.X,
-                                                SelectedElm_LEFT.GC.P.Y - SelectedP_LEFT.Y
-                                            );
-                                        SelectedP_LEFT = brd.GV.Projection(DltMP);
-                                        SelectedElm_LEFT.GC.P.X = SelectedP_LEFT.X + DlElmP.X;
-                                        SelectedElm_LEFT.GC.P.Y = SelectedP_LEFT.Y + DlElmP.Y;
-                                        //brd.root.AddTop(SelectedElm_LEFT);
-                                        brd.SelectedElm_LEFT = ElmOnBoard_LEFT.SelectedElm_LEFT;
-                                        if (ElmOnBoard_LEFT != this)
-                                        {
-                                            ElmOnBoard_LEFT.ElmOnBoard_LEFT = null;
-                                            ElmOnBoard_LEFT.SelectedElm_LEFT = null;
-                                            ElmOnBoard_LEFT.Refresh();
-                                            ElmOnBoard_LEFT = brd;
-                                            brd.ElmOnBoard_LEFT = brd;
-                                        }
-                                        else
-                                        {
-                                            ElmOnBoard_LEFT = brd;
-                                            this.Refresh();
-                                            brd.ElmOnBoard_LEFT = brd;
-                                        }
-                                        break;
-                                    }
-                            }
-                        }*/
-
-                        PointF pt = ElmOnBoard_LEFT.GV.Projection(new Point(abp.X - ElmOnBoard_LEFT.Left, abp.Y - ElmOnBoard_LEFT.Top));
-                        SelectedElm_LEFT.GC.P.X += (pt.X - SelectedP_LEFT.X);
-                        SelectedElm_LEFT.GC.P.Y += (pt.Y - SelectedP_LEFT.Y);
-                        SelectedP_LEFT = pt;
-                        ElmOnBoard_LEFT.Refresh();
-                    }
-                    else if ((e.Button.HasFlag(MouseButtons.Right) == false || SelectedElm_RIGHT != null) && ElmOnBoard_LEFT == this)
-                    {
-                        PointF pt = GV.Projection(e.Location);
-                        GV.GC.P.X -= (pt.X - SelectedP_LEFT.X);
-                        GV.GC.P.Y -= (pt.Y - SelectedP_LEFT.Y);
-                        this.Refresh();
-                    }
-                }
-
+                //else
+                //{
+                //    Point abp = new Point(this.Left + e.X - /*ElmOnBoard_LEFT.*/Left, this.Top + e.Y - /*ElmOnBoard_LEFT.*/Top);
+                //    PointF pt = GV.Projection(abp);
+                //    Element elmAt = /*ElmOnBoard_LEFT.*/root.MousePickAt(/*ElmOnBoard_LEFT.*/pt, GV.GC.A);
+                //    if (elmAt == null) elmAt = root;
+                //    LacherElément(elmAt, pt);
+                //}
+            }
+            else if (e.Button.HasFlag(MouseButtons.Left) && idAttrapeEnCours == 0 && (e.Button.HasFlag(MouseButtons.Right) == false /*|| SelectedElm_RIGHT != null*/) /*&& ElmOnBoard_LEFT == this*/)
+            {
+                PointF pt = GV.Projection(e.Location);
+                GV.GC.P.X -= (pt.X - SelectedP_LEFT.X);
+                GV.GC.P.Y -= (pt.Y - SelectedP_LEFT.Y);
+                this.Refresh();
             }
         }
 
@@ -530,25 +392,32 @@ namespace Board
         {
             if (e.Delta != 0)
             {
+                int delta = e.Delta / 120;
+                delta *= 10;
                 PointF pt = GV.Projection(e.Location);
                 //PointF pt = new PointF((e.Location.X / GC.E), (e.Location.Y / GC.E));
                 Element elm;
-                if (SelectedElm_LEFT == null && SelectedElm_RIGHT == null && Shift_Down == false)
-                    elm = root.MousePickAt(pt, GV.GC.A, (Ctrl_Down ? Element.EPickUpAction.Tourner : Element.EPickUpAction.Roulette));
-                else elm = null;
-
-                if(Ctrl_Down)
+                if (MouseBt.HasFlag(MouseButtons.Right)) elm = null;
+                else
                 {
-                    if (elm != null && !elm.EstDansEtat(Element.EEtat.RotationFixe)) elm.Tourner(e.Delta);
+                    if (joueur != null && joueur.AElementAttrapé) elm = null;
+                    else elm = root.MousePickAt(pt, GV.GC.A, (Shift_Down ? Element.EPickUpAction.Tourner : Element.EPickUpAction.Roulette));
+                }
+
+                if (Shift_Down)
+                {
+                    if (elm != null && !elm.EstDansEtat(Element.EEtat.RotationFixe)) TournnerElément(elm, delta);//.Tourner(e.Delta);
                     else
                     {
-                        int delta = e.Delta / 120;
-                        delta += 8 + (int)((GV.GC.A / 45.0f) + 0.5f);
+                        /*delta += 8 + (int)((GV.GC.A / 45.0f) + 0.5f);
                         delta %= 8;
-                        GV.GC.A = delta * 45.0f;
+                        GV.GC.A = delta * 45.0f;*/
+                        int oldA = (int)(GV.GC.A + 0.5f);
+                        int newA = oldA + delta;
+                        GV.GC.A = GeoCoord2D.AngleFromToAimant45(oldA, newA);
                     }
                 }
-                else if (elm != null) elm.Roulette(e.Delta);
+                else if (elm != null) RouletteElément(elm, delta); //.Roulette(e.Delta);
                 else
                 {
                     if (e.Delta < 0)
@@ -572,81 +441,70 @@ namespace Board
             }
         }
 
-        private void NouvelleFenêtre()
+        /*private void NouvelleFenêtre()
         {
             Board nb = new Board("Board secondaire");
             nb.WindowState = FormWindowState.Normal;
             nb.Show();
-        }
+        }*/
 
-        private void Connecter()
+        private void Connecter(Point p)
         {
-            if (connection == null)
+            if (connexion == null)
             {
-                if (root != null && root.EstVide == false)
-                {
-                    DialogResult dr = MessageBox.Show("Effacer la table ?", "Votre table sera éffacées, voulez-vous poursuivre ?", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-                    if (dr != DialogResult.Yes) return;
-                    root.Netoyer();
-                    this.Refresh();
-                }
-                ConnectForm cf = new ConnectForm(this, connection);
-                if(cf.ShowDialog(this) == DialogResult.Yes) connection = cf.connection;
+                ConnectForm cf = new ConnectForm(this, p, connexion);
+                if(cf.ShowDialog(this) == DialogResult.Yes) connexion = cf.connection;
             }
             else
             {
-                ConnectForm cf = new ConnectForm(this, connection);
+                ConnectForm cf = new ConnectForm(this, p, connexion);
                 if (cf.ShowDialog(this) == DialogResult.Yes) Déconnecter();
             }
         }
 
         private bool Déconnecter()
         {
-            if (connection != null)
+            ClientThreadBoard ct = connexion;
+            connexion = null;
+            if (ct != null)
             {
-                connection.Close();
-                if (connection.SafeStop() == false)
-                    connection.Abort();
-                connection = null;
-                if (root != null)
+                ct.EcrireJournal("Journal.txt");
+
+                //ct.Close();
+                ct.fonctionne = false;
+                if (ct.SafeStop() == false)
                 {
-                    root.Netoyer();
-                    this.Refresh();
+                    ct.Abort();
+                    ct.Close();
                 }
+                //connection = null;
+                Nétoyer();
                 return true;
             }
             else return true;
         }
 
-        private Element Supprimer(Element elm)
-        {
-            
-            Element selm = root.Suppression(elm);
-            if (selm != null) this.Refresh();
-            return selm;
-        }
-
         private void Board_MouseDoubleClick(object sender, MouseEventArgs e)
         {
-            PointF pt = GV.Projection(e.Location);
-            if (e.Button.HasFlag(MouseButtons.Left))
+            if (e.Button.HasFlag(MouseButtons.Left) && Ctrl_Down == false && Shift_Down == false)
             {
-                if (SelectedElm_LEFT != null)
+                if (joueur != null && joueur.AElementAttrapé)
                 {
                     PointF dX = new PointF(e.X - ClickP_LEFT.X, e.Y - ClickP_LEFT.Y);
                     float dCarrée = dX.X * dX.X + dX.Y * dX.Y;
                     if (dCarrée < CLICK_SEUIL)
                     {
-                        SelectedElm_LEFT.Retourner();
+                        joueur.ElémentAttrapés.ForEach(elm => RetournerElément(elm));
                         this.Refresh();
                     }
                 }
                 else
                 {
+                    PointF pt = GV.Projection(e.Location);
                     Element elm = root.MousePickAt(pt, GV.GC.A);
                     if (elm != null)
                     {
-                        elm.Retourner();
+                        RetournerElément(elm);//elm.Retourner();
                         this.Refresh();
                     }
                 }
@@ -658,9 +516,16 @@ namespace Board
             PointF pt = GV.Projection(e.Location);
             if (e.Button.HasFlag(MouseButtons.Middle))
             {
-                Element elm = root.MousePickAt(pt, GV.GC.A);
-                if (elm != null) elm.Retourner();
-                this.Refresh();
+                if (joueur != null && joueur.AElementAttrapé)
+                {
+                    joueur.RetournerAttrapées();
+                    this.Refresh();
+                }
+                else
+                {
+                    Element elm = root.MousePickAt(pt, GV.GC.A, Element.EPickUpAction.Retourner);
+                    if (elm != null) RetournerElément(elm);//.Retourner();
+                }
             }
             if (e.Button.HasFlag(MouseButtons.Right))
             {
@@ -676,12 +541,20 @@ namespace Board
                          * Board.RangerVersParent(this); ctrl.Refresh();
                         */
                         if (cm == null) cm = new ContextMenu();
-                        if(elm.EstParent || elm.Parent != null)
+                        /*if(elm.EstParent || elm.Parent != null)
                         {
                             cm.MenuItems.Add("-");
-                            if (elm.EstParent) cm.MenuItems.Add(new MenuItem("Ranger", (o, eArg) => { Board.RangerVersParent(elm); this.Refresh(); }));
-                            if (elm.Parent != null) cm.MenuItems.Add(new MenuItem("Défausser", (o, eArg) => { Board.DéfausserElement(elm); this.Refresh(); }));
-                        }
+                            if (elm.EstParent) cm.MenuItems.Add(new MenuItem("Ranger", (o, eArg) => { RangerVersParent(elm); this.Refresh(); }));
+                            if (elm.Parent != null) cm.MenuItems.Add(new MenuItem("Défausser", (o, eArg) => { DéfausserElement(elm); this.Refresh(); }));
+                        }*/
+                        /*if(connection?.NomSession != null)
+                        {
+                            cm.MenuItems.Add(new MenuItem("Session", new MenuItem[]
+                                {
+                                    new MenuItem("Rétablir", new EventHandler((o, eArg) => { })),
+                                    new MenuItem("Transmettre", new EventHandler((o, eArg) => { }))
+                                }));
+                        }*/
                         cm.MenuItems.Add("-");
                         cm.MenuItems.Add(new MenuItem("Supprimer", (o,eArg) => this.Supprimer(elm)));
                         if (cm!=null)cm.Show(this, e.Location);
@@ -706,19 +579,21 @@ namespace Board
                             //new MenuItem("Nouvelle fenêtre", (o,eArg) => NouvelleFenêtre())
                             });
                         ctxm.MenuItems.Add("-");
-                        if (connection == null)ctxm.MenuItems.Add("Connecter", (o, eArg) => Connecter());
+                        if (connexion == null) ctxm.MenuItems.Add("Connecter", (o, eArg) => Connecter(new Point(this.Left + e.X, this.Top + e.Y)));
                         else
                         {
-                            ctxm.MenuItems.Add("Connexion",
-                                    new MenuItem[]
-                                    {
-                                        new MenuItem("Créer une session", new EventHandler((o,eArg) => { new CréerSession(connection).ShowDialog(this); })), //CréerSession cs = new CréerSession(connection); if(cs.ShowDialog() == DialogResult.Yes) { NomSessionCréée = cs.NomSession; SessionCrééeHashPwd = cs.SessionHashPwd }
-                                        new MenuItem("Sessions", new EventHandler((o,eArg) => { jSession = new GérerSessions(connection); if(jSession.ShowDialog() == DialogResult.Yes); jSession = null; })),
-                                        new MenuItem("-"),
-                                        new MenuItem("Déconnecter", new EventHandler((o,eArg) => { Connecter(); }))
-                                    }
-                                );
+                            List<MenuItem> lstMenu = new List<MenuItem>();
+                            if (connexion != null && connexion.EstIdentifié)
+                            {
+                                lstMenu.Add(new MenuItem("Créer une session", new EventHandler((o, eArg) => { new CréerSession(connexion, new Point(this.Left + e.X, this.Top + e.Y)).ShowDialog(this); }))); //CréerSession cs = new CréerSession(connection); if(cs.ShowDialog() == DialogResult.Yes) { NomSessionCréée = cs.NomSession; SessionCrééeHashPwd = cs.SessionHashPwd }
+                                lstMenu.Add(new MenuItem("Sessions", new EventHandler((o, eArg) => { jSession = new GérerSessions(connexion, new Point(this.Left + e.X, this.Top + e.Y)); if (jSession.ShowDialog() == DialogResult.Yes) ; jSession = null; })));
+                                lstMenu.Add(new MenuItem("-"));
+                            }
+                            lstMenu.Add(new MenuItem("Déconnecter", new EventHandler((o, eArg) => { Connecter(new Point(this.Left + e.X, this.Top + e.Y)); })));
+                            ctxm.MenuItems.Add("Connexion", lstMenu.ToArray());
                         }
+                        ctxm.MenuItems.Add("-");
+                        ctxm.MenuItems.Add(new MenuItem("Tout éffacer", (o, eArg) => this.ToutSupprimer()));
                         ctxm.Show(this, e.Location);
                     }
                 }
@@ -727,7 +602,7 @@ namespace Board
 
         private void Board_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (connection != null)
+            if (connexion != null)
             {
                 if (MessageBox.Show("Êtes-vous sûr de vouloir vous déconnecter ?", "Déconnecter ?", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                 {
@@ -760,9 +635,16 @@ namespace Board
             Shift_Down = e.Shift;
         }
 
+        private void Board_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (e.KeyChar == ' ' && joueur != null && joueur.AElementAttrapé)
+                joueur.RetournerAttrapées();
+        }
+
         private void Board_Resize(object sender, EventArgs e)
         {
             GV.Dimention = new PointF(this.Width, this.Height);
+            this.Refresh();
         }
 
         /*public void PerteDeConnexion(string message)
@@ -790,10 +672,356 @@ namespace Board
             MessageBox.Show("Connexion réussie", "Connexion réussie", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }*/
 
-        public void MessageServeur(OutilsRéseau.EMessage type, string message)
+        private void Nétoyer()
+        {
+            if (root != null) root.Nétoyer(); else root = new Groupe();
+            if (joueur != null) joueur.Remettre(); else joueur = new Joueur();
+            DicoJoueurs = null;
+            MouseBt = MouseButtons.None;
+            idAttrapeEnCours = 0;
+            bibliothèqueImage.Netoyer();
+            bibliothèqueModel.Netoyer();
+            this.Refresh();
+        }
+
+        private bool EstDansSession { get => connexion != null && joueur != null && connexion.EstIdentifié && !String.IsNullOrWhiteSpace(connexion.NomSession); }
+
+        #region Méthodes d'intéraction avec le board
+        private void RetournerElément(Element elm)
+        {
+            if(elm != null)
+            {
+                if (EstDansSession && elm.IdentifiantRéseau > 0)
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.ChangerEtatElément, elm.IdentifiantRéseau, elm.RetournerEtat());
+                else
+                {
+                    elm.Retourner();
+                    this.Refresh();
+                }
+            }
+        }
+
+        public void ChangerEtatElément(Element elm, Element.EEtat etat)
+        {
+            if (elm != null)
+            {
+                if (EstDansSession && elm.IdentifiantRéseau > 0)
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.ChangerEtatElément, elm.IdentifiantRéseau, etat);
+                else
+                {
+                    elm.MajEtat(etat);
+                    Refresh();
+                }
+            }
+        }
+
+        private void RouletteElément(Element elm, int delta)
+        {
+            if (elm != null)
+            {
+                if (EstDansSession && elm.IdentifiantRéseau > 0)
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.RouletteElément, elm.IdentifiantRéseau, delta);
+                else elm.Roulette(delta);
+            }
+        }
+
+        private void TournnerElément(Element elm, int delta)
+        {
+            if (elm != null)
+            {
+                if (EstDansSession && elm.IdentifiantRéseau > 0)
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.TournerElément, elm.IdentifiantRéseau, delta);
+                else elm.Tourner(delta);
+            }
+        }
+
+        public void RangerVersParent(Element parent)
+        {
+            if (parent != null)
+            {
+                if (EstDansSession && parent.IdentifiantRéseau > 0)
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.RangerVersParent, parent.IdentifiantRéseau);
+                else
+                {
+                    Element elm = root.RangerVersParent(parent);
+                    if (elm != null)
+                    {
+                        elm = root.ElementLaché(elm);
+                        if (elm != null) root.Suppression(elm);
+                    }
+                    Refresh();
+                }
+            }
+        }
+
+        public void Mélanger(Element elm)
+        {
+            if (elm != null)
+            {
+                if (EstDansSession && elm.IdentifiantRéseau > 0)
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.Mélanger, elm.IdentifiantRéseau);
+                else
+                {
+                    if (elm is Pile)
+                    {
+                        (elm as Pile).Mélanger();
+                        Refresh();
+                    }
+                }
+            }
+        }
+
+        public void DéfausserElement(Element relem)
+        {
+            if (relem != null)
+            {
+                if (EstDansSession && relem.IdentifiantRéseau > 0)
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.DéfausserElement, relem.IdentifiantRéseau);
+                else
+                {
+                    Element elm = root.DéfausserElement(relem);
+                    if (elm != null) Refresh();
+                }
+            }
+        }
+
+        public void ReMettreDansPioche(Défausse défss)
+        {
+            if (défss != null)
+            {
+                if (EstDansSession && défss.IdentifiantRéseau > 0)
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.ReMettreDansPioche, défss.IdentifiantRéseau);
+                else
+                {
+                    défss.ReMettreDansLaPioche();
+                    Refresh();
+                }
+            }
+        }
+
+        public void MettreEnPioche(Element elm)
+        {
+            if (elm != null)
+            {
+                if (EstDansSession && elm.IdentifiantRéseau > 0)
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.MettreEnPioche, elm.IdentifiantRéseau);
+                else
+                {
+                    if (elm is Element2D)
+                    {
+                        elm = root.DétacherElement(elm);
+                        if (elm is Element2D2F)
+                        {
+                            elm = new Pioche(elm as Element2D2F);
+                        }
+                        else if (elm is Element2D)
+                        {
+                            elm = new Pioche(elm as Element2D);
+                        }
+                        root.ElementLaché(elm);
+                        Refresh();
+                    }
+                }
+            }
+        }
+
+        public void CréerLaDéfausse(Pioche pioch)
+        {
+            if (pioch != null)
+            {
+                if (EstDansSession && pioch.IdentifiantRéseau > 0)
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.CréerLaDéfausse, pioch.IdentifiantRéseau);
+                else
+                {
+                    if (pioch != null)
+                    {
+                        Défausse deff = new Défausse(pioch);
+                        root.ElementLaché(deff);
+                        Refresh();
+                    }
+                }
+            }
+        }
+
+        public void MettreEnPaquet(Element relem)
+        {
+            if (relem != null)
+            {
+                if (EstDansSession && relem.IdentifiantRéseau > 0)
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.MettreEnPaquet, relem.IdentifiantRéseau);
+                else
+                {
+                    relem = root.DétacherElement(relem);
+                    if (relem != null) root.ElementLaché(new Paquet(relem));
+                }
+            }
+        }
+
+        private void Supprimer(Element elm)
+        {
+            if (elm != null)
+            {
+                if (EstDansSession)
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.Supprimer, elm.IdentifiantRéseau);
+                {
+                    Element selm = root.Suppression(elm);
+                    if (selm != null) this.Refresh();
+                }
+            }
+        }
+
+        private void ToutSupprimer()
+        {
+            if (MessageBox.Show("Vous êtes sur le point de tout éffacer.\r\nÊtes-vous sûr de vouloir le faire ?", "Confirmation de suppression massive", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            {
+                if (EstDansSession)
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.SupprimerTout);
+                else Nétoyer();
+            }
+        }
+
+        public void AttraperElément(Element elmSource, Element elmCible, PointF pt)
+        {
+            if (elmSource == null) elmSource = root;
+            if (EstDansSession)
+            {
+                if (elmCible != null)
+                {
+                    idAttrapeEnCours = elmCible.IdentifiantRéseau;
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.AttraperElement, pt, elmSource.IdentifiantRéseau, elmCible.IdentifiantRéseau);
+                }
+            }
+            else
+            {
+                if (elmCible != null)
+                {
+                    elmCible = elmSource.DétacherElement(elmCible);
+                    if(elmCible != null)
+                    {
+                        /*SelectedElm_LEFT = elmCible;
+                        elmCible.GC.P.X -= pt.X;
+                        elmCible.GC.P.Y -= pt.Y;
+                        SelectedP_LEFT = pt;*/
+                        joueur.P = pt;
+                        joueur.DonnerElément(elmCible);
+                        this.Refresh();
+                    }
+                    //else SelectedElm_LEFT = null;
+                }
+                //else SelectedElm_LEFT = null;
+            }
+        }
+
+
+        public void PiocherElément(Element elmSource, Element elmCible, PointF pt)
+        {
+            if (elmCible != null)
+            {
+                int index = elmCible.GetPiocheIndex();
+                if (index == int.MaxValue) AttraperElément(elmSource, elmCible, pt);
+                else
+                {
+                    if (elmSource == null) elmSource = root;
+                    if (EstDansSession)
+                    {
+                        idAttrapeEnCours = elmCible.IdentifiantRéseau;
+                        connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.PiocherElement, pt, elmCible.IdentifiantRéseau, index);
+                    }
+                    else
+                    {
+                        elmCible = elmCible.MousePioche(index);
+                        if (elmCible != null)
+                        {
+                            elmCible.GC.P.X += elmSource.GC.P.X;
+                            elmCible.GC.P.Y += elmSource.GC.P.Y;
+                            //SelectedElm_LEFT = elmCible;
+                            //SelectedP_LEFT = pt;
+                            joueur.P = pt;
+                            joueur.DonnerElément(elmCible);
+                            this.Refresh();
+                        }
+                        //else SelectedElm_LEFT = null;
+                    }
+                }
+            }
+        }
+        
+        public void LacherElément(Element elmDestinataire, PointF pt)
+        {
+            idAttrapeEnCours = 0;
+            if (joueur != null && joueur.AElementAttrapé)
+            {
+                if (elmDestinataire == null) elmDestinataire = root;
+                if (EstDansSession)
+                {
+                    connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.LacherElement, pt, elmDestinataire.IdentifiantRéseau);
+                }
+                else
+                {
+                    joueur.P = pt;
+                    List<Element> lstElementLaché = joueur.ToutRécupérer();
+                    if (lstElementLaché != null)
+                        lstElementLaché.ForEach(elm =>
+                        {
+                            elm = elmDestinataire.ElementLaché(elm);
+                            if (elm != null)
+                            {
+                                if (elm is Pile) root.Suppression(elm);//destruction !
+                                else /*ElmOnBoard_LEFT.*/root.ElementLaché(elm);
+                            }
+                        });
+                    //elmLaché.GC.P.X += pt.X;
+                    //elmLaché.GC.P.Y += pt.Y;
+                    //elmLaché = elmDestinataire.ElementLaché(elmLaché);
+                    //if (elmLaché != null)
+                    //{
+                    //    //ElmOnBoard_LEFT.root.AddTop(SelectedElm_LEFT);
+                    //    if (elmLaché is Pile) root.Suppression(elmLaché);//destruction !
+                    //    else /*ElmOnBoard_LEFT.*/root.ElementLaché(elmLaché);
+                    //}
+                    //SelectedElm_LEFT = null;
+                    this.Refresh();
+                }
+            }
+        }
+        #endregion
+
+        #region Invoke du thread réseau
+        private Element TrouverElementRéseau(int idRez)
+        {
+            if (idRez > 0)
+            {
+                Element elm = root.MousePickAt(idRez);
+                if (elm == null) elm = TrouverElementJoueur(idRez);
+                return elm;
+            }
+            else return null;
+        }
+
+        private object MajElement(Element elm)
+        {
+            if (elm != null && !(elm is ElementRéseau))
+            {
+                //clientThreadServers.ForEach(j => j.MajElement(elm)); ;
+                return root.MettreAJour(elm);
+            }
+            else return null;
+        }
+
+        public void IVK_JoinSession(string session, ushort idJoueur, PointF p)
+        {
+            Nétoyer();
+            if (joueur == null) joueur = new Joueur();
+            joueur.IdSessionJoueur = idJoueur;
+            joueur.P = p;
+            IVK_MessageServeur(OutilsRéseau.EMessage.JoinSession, session);
+        }
+
+        public void IVK_MessageServeur(OutilsRéseau.EMessage type, string message)
         {
             string caption;
             MessageBoxIcon ico;
+            string session = null;
 
             switch(type)
             {
@@ -812,9 +1040,13 @@ namespace Board
                 case OutilsRéseau.EMessage.IdentifiantRefusée:
                     if (MessageBox.Show("Votre identifiant est refusé.\r\nL'identifiant automatique \"" + message + "\" vous est proposé.\r\nVoulez-vous poursuivre ?", "Identifiant refusé", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                     {
+                        joueur = new Joueur(0) { Nom = message };
+                        this.Text = "Board connecté";
                         message = "Connexion réussie !";
                         caption = "Connexion";
                         ico = MessageBoxIcon.Information;
+                        type = OutilsRéseau.EMessage.ConnexionRéussie;
+                        session = "";
                     }
                     else
                     {
@@ -822,9 +1054,17 @@ namespace Board
                         return;
                     }
                     break;
+                case OutilsRéseau.EMessage.ConnexionRéussie:
+                    this.Text = "Board connecté";
+                    message = "Connexion réussie !";
+                    caption = "Connexion";
+                    ico = MessageBoxIcon.Information;
+                    session = "";
+                    break;
                 case OutilsRéseau.EMessage.CréaSession:
                     caption = "Création de session réussie";
                     ico = MessageBoxIcon.Information;
+                    session = message;
                     message = "Votre session \"" + message + "\" a bien été crée";
                     break;
                 case OutilsRéseau.EMessage.RefuSession:
@@ -835,26 +1075,564 @@ namespace Board
                 case OutilsRéseau.EMessage.JoinSession:
                     caption = "Entrée en session";
                     ico = MessageBoxIcon.Information;
-                    root.Netoyer();
-                    message = "Vous rejoignez la session \"" + message + "\".";
+                    session = message;
+                    this.Text = "Board (Session en cours : " + session + ")";
+                    message = "Vous rejoignez la session \"" + session + "\".";
                     break;
                 case OutilsRéseau.EMessage.QuitSession:
                     caption = "Sortie de session";
+                    this.Text = "Board connecté";
                     ico = MessageBoxIcon.Information;
-                    root.Netoyer();
+                    Nétoyer();
+                    if (joueur != null) joueur.Remettre(); else joueur = new Joueur();
                     message = "Vous quitez la session \"" + message + "\".";
                     break;
                 case OutilsRéseau.EMessage.Déconnexion:
+                    idAttrapeEnCours = 0;
+                    this.Text = "Board";
                     caption = "Perte de connexion";
                     ico = MessageBoxIcon.Error;
+                    Nétoyer();
+                    if (connexion != null)
+                    {
+                        connexion.EcrireJournal("Journal.txt");
+                        connexion = null;
+                        if (root != null)
+                        {
+                            Nétoyer();
+                            this.Refresh();
+                        }
+                    }
                     break;
                 default:
                     caption = "Message du serveur";
                     ico = MessageBoxIcon.Asterisk;
                     break;
             }
-
             if(message!=null) MessageBox.Show(message, caption, MessageBoxButtons.OK, ico);
+            if(session != null && (type == OutilsRéseau.EMessage.ConnexionRéussie || type == OutilsRéseau.EMessage.CréaSession))
+            {
+                jSession = new GérerSessions(connexion, new Point(this.Left + this.Width / 2, this.Top + this.Height / 2), session);
+                if (jSession.ShowDialog() == DialogResult.Yes);
+                jSession = null;
+            }
         }
+
+        public void IVK_SynchroniserSession(Groupe grp, Dictionary<ushort, Joueur> jrs/*, List<ElementRéseau> élémentRésiduel*/)
+        {
+            if (grp != null && EstDansSession)
+            {
+                //SelectedElm_RIGHT = null;
+                root = grp;
+                if (jrs != null && jrs.Any()) DicoJoueurs = jrs; else DicoJoueurs = null;
+                this.Refresh();
+            }
+        }
+
+        public void IVK_RéidentifierElément(int[] ids)
+        {
+            if (ids != null && ids.Any() && EstDansSession)
+            {
+                for (int i = 0; i < ids.Length; i += 2)
+                {
+                    Element e = root.MousePickAt(ids[i]);
+                    if (e != null) e.IdentifiantRéseau = ids[i + 1];
+                }
+            }
+        }
+
+        public void IVK_ArrivéeJoueur(ushort idJr, string nomJr, PointF pJr)
+        {
+            if (idJr != 0 && EstDansSession)
+            {
+                if (joueur != null && joueur.IdSessionJoueur == idJr) ;
+                else
+                {
+                    if (DicoJoueurs == null) DicoJoueurs = new Dictionary<ushort, Joueur>();
+                    if (DicoJoueurs.ContainsKey(idJr))
+                        connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.DemandeSynchro);
+                    else DicoJoueurs.Add(idJr, new Joueur(idJr, nomJr) { P = pJr });
+                }
+            }
+        }
+
+        public void IVK_SortieJoueur(ushort idJr, PointF pJr)
+        {
+            if (idJr != 0 && EstDansSession)
+            {
+                Joueur jr = RetirerJoueur(idJr);
+                if(jr != null)
+                {
+                    jr.P = pJr;
+                    List<Element> lstElm = jr.ToutRécupérer();
+                    if(lstElm != null)
+                    {
+                        lstElm.ForEach(e => root.ElementLaché(e));
+                        Refresh();
+                    }
+                }
+            }
+        }
+
+        public void IVK_DemandeElement(List<int> idElms)
+        {
+            if (idElms != null && idElms.Any() && EstDansSession)
+            {
+                if (root != null)
+                {
+                    List<Element> lstElms = idElms.Select(id => TrouverElementRéseau(id)).Where(e => !(e is ElementRéseau)).ToList();
+                    if (lstElms.Any()) connexion.EnqueueCommande(ClientThread.ServeurCodeCommande.RéceptionElement, ref GIdElémentRéseau, lstElms);
+                }
+            }
+        }
+
+        public void IVK_RéceptionElement(List<Element> lstElms)
+        {
+            if (lstElms != null && lstElms.Any() && EstDansSession)
+            {
+                if (root != null)
+                {
+                    if (lstElms.Any())
+                    {
+                        lstElms.ForEach(e => MajElement(e));
+                        Refresh();
+                    }
+                }
+            }
+        }
+
+        public void IVK_RéceptionImage(Image img)
+        {
+            if(img !=null && EstDansSession && bibliothèqueImage.NouvelleVersion(img))
+            {
+                root.MettreAJour(img);
+                MajImageJoueur(img);
+                //if (SelectedElm_LEFT != null) SelectedElm_LEFT.MettreAJour(img);
+                //if (SelectedElm_RIGHT != null) SelectedElm_RIGHT.MettreAJour(img);
+                bibliothèqueModel.MettreAJour(img);
+                this.Refresh();
+            }
+        }
+
+        public void IVK_RéceptionModel(Model2_5D mld)
+        {
+            if (mld != null && EstDansSession)
+            {
+                if(bibliothèqueModel.NouvelleVersion(mld))
+                    this.Refresh();
+            }
+        }
+
+        public void IVK_DemandeImage(List<string> idImgs)
+        {
+            if (bibliothèqueImage != null && EstDansSession)
+            {
+                foreach (string sig in idImgs)
+                {
+                    MemoryStream strm = new MemoryStream();
+                    strm.WriteByte((byte)ClientThread.ServeurCodeCommande.RéceptionImage);
+                    if (bibliothèqueImage.RécupérerImage(sig, strm)) connexion.EnqueueCommande(strm);
+                }
+            }
+        }
+
+        public void IVK_DemandeModel(List<string> idMods)
+        {
+            if (bibliothèqueModel != null && EstDansSession)
+            {
+                foreach (string sig in idMods)
+                {
+                    MemoryStream strm = new MemoryStream();
+                    strm.WriteByte((byte)ClientThread.ServeurCodeCommande.RéceptionModel);
+                    if (bibliothèqueModel.RécupérerModel(sig, strm)) connexion.EnqueueCommande(strm);
+                }
+            }
+        }
+
+        public void IVK_ChargerElement(Element elm)
+        {
+            if (elm != null && EstDansSession)
+            {
+                root.Fusionner(elm);
+                this.Refresh();
+            }
+        }
+
+        public void IVK_ChangerEtatElément(int idElm, Element.EEtat etat)
+        {
+            if (EstDansSession)
+            {
+                Element elm = TrouverElementRéseau(idElm);
+                if (elm != null)
+                {
+                    elm.MajEtat(etat);
+                    this.Refresh();
+                }
+            }
+        }
+
+        public void IVK_RouletteElément(int idElm, int delta)
+        {
+            if (EstDansSession)
+            {
+                Element elm = TrouverElementRéseau(idElm);
+                if (elm != null)
+                {
+                    elm.Roulette(delta);
+                    this.Refresh();
+                }
+            }
+        }
+
+        public void IVK_TournerElément(int idElm, int delta)
+        {
+            if (EstDansSession)
+            {
+                Element elm = TrouverElementRéseau(idElm);
+                if (elm != null)
+                {
+                    elm.Tourner(delta);
+                    this.Refresh();
+                }
+            }
+        }
+
+        private Joueur TrouverJoueur(ushort idJoueur)
+        {
+            if (joueur != null && idJoueur == joueur.IdSessionJoueur) //c'est nous qui attrapons ?
+                return joueur;
+            else
+            {
+                if (DicoJoueurs == null) DicoJoueurs = new Dictionary<ushort, Joueur>();
+                Joueur jr;
+                if (!DicoJoueurs.TryGetValue(idJoueur, out jr))
+                {
+                    jr = new Joueur(idJoueur);
+                    DicoJoueurs.Add(idJoueur, jr);
+                }
+                return jr;
+            }
+        }
+
+        private Element TrouverElementJoueur(int idElm)
+        {
+            /*if (SelectedElm_LEFT != null && SelectedElm_LEFT.IdentifiantRéseau == idElm) //c'est nous qui attrapons ?
+                return SelectedElm_LEFT;*/
+            if(joueur != null && joueur.AElementAttrapé)
+            {
+                Element elm = joueur.TrouverElementRéseau(idElm);
+                if (elm != null) return elm;
+            }
+            if (DicoJoueurs != null)
+            {
+                Element elm = null;
+                foreach (KeyValuePair<ushort, Joueur> kv in DicoJoueurs)
+                {
+                    elm = kv.Value.TrouverElementRéseau(idElm);
+                    if (elm != null) break;
+                }
+                return elm;
+            }
+            else return null;
+        }
+
+        private void MajImageJoueur(Image img)
+        {
+            if (joueur != null) joueur.MajImage(img);
+            if (DicoJoueurs != null)
+            {
+                foreach (KeyValuePair<ushort, Joueur> kv in DicoJoueurs)
+                    kv.Value.MajImage(img);
+            }
+        }
+
+        private Joueur RetrouverJoueur(ushort idJoueur)
+        {
+            if (joueur != null && idJoueur == joueur.IdSessionJoueur) //c'est nous qui attrapons ?
+                return joueur;
+            else if(DicoJoueurs != null)
+            {
+                Joueur jr;
+                if (DicoJoueurs.TryGetValue(idJoueur, out jr)) return jr;
+                else return null;
+            }
+            else return null;
+        }
+
+        private Joueur RetirerJoueur(ushort idJoueur)
+        {
+            if (joueur != null && idJoueur == joueur.IdSessionJoueur) //c'est nous qui attrapons ?
+                return joueur;
+            else if (DicoJoueurs != null)
+            {
+                Joueur jr;
+                if (DicoJoueurs.TryGetValue(idJoueur, out jr))
+                {
+                    DicoJoueurs.Remove(idJoueur);
+                    return jr;
+                }
+                else return null;
+            }
+            else return null;
+        }
+
+        private Joueur DonnerElementAJoueur(ushort idJr, PointF pj, Element elmAtrp)
+        {
+            if (elmAtrp != null)
+            {
+                Joueur jr = TrouverJoueur(idJr);
+                if (jr != null)
+                {
+                    if(joueur == jr) //c'est nous qui attrapons ?
+                    {
+                        if (idAttrapeEnCours == 0 || idAttrapeEnCours != elmAtrp.IdentifiantRéseau) // on attrape autre chose ou alors on a déjà relaché...
+                        {
+                            Element elmRescp = root.MousePickAt(pj, GV.GC.A);
+                            if (elmRescp == null) elmRescp = root;
+                            LacherElément(elmRescp, pj);
+                        }
+                        else idAttrapeEnCours = 0;
+                    }
+                    jr.P = pj;
+                    jr.DonnerElément(elmAtrp);
+                    this.Refresh();
+                }
+                return jr;
+            }
+            else return null;
+        }
+
+        public void IVK_AttraperElement(ushort idJr, PointF pj, int idElmPSrc, int idElmAtrp) //J'attrape l'élément idElmAtrp depuis idElmPSrc
+        {
+            if (EstDansSession && idElmPSrc > 0 && idElmAtrp > 0)
+            {
+                Element elmPSrc = TrouverElementRéseau(idElmPSrc);
+                if (elmPSrc == null) elmPSrc = root;
+                Element elmAtrp = elmPSrc.MousePickAt(idElmAtrp);
+                if (elmAtrp != null)
+                {
+                    elmAtrp = elmPSrc.DétacherElement(elmAtrp);
+                    DonnerElementAJoueur(idJr, pj, elmAtrp);
+                }
+            }
+        }
+
+        public void IVK_PiocherElement(ushort idJr, PointF pj, int idElmPSrc, int index, int idElm)
+        {
+            if (EstDansSession && idElmPSrc > 0)
+            {
+                idAttrapeEnCours = 0;
+                Element elmPSrc = TrouverElementRéseau(idElmPSrc);
+                if (elmPSrc != null)
+                {
+                    Element elmAtrp = elmPSrc.MousePioche(index);
+                    if (elmAtrp != null)
+                    {
+                        elmAtrp.IdentifiantRéseau = idElm;
+                        DonnerElementAJoueur(idJr, pj, elmAtrp);
+                    }
+                }
+            }
+        }
+
+        //private Element RécupérerElementDeJoueur(ushort idJr, PointF pj, int idElm)
+        //{
+        //    if (idElm > 0)
+        //    {
+        //        Element elm;
+        //        /*if (idJr == joueur.IdSessionJoueur) //c'est nous qui attrapons ?
+        //        {
+        //            joueur.P = pj;
+        //            elm = SelectedElm_LEFT;
+        //            SelectedElm_LEFT = null;
+        //            if (elm != null)
+        //            {
+        //                elm.GC.P.X += pj.X;
+        //                elm.GC.P.Y += pj.Y;
+        //            }
+        //        }
+        //        else
+        //        {*/
+        //            Joueur jr = TrouverJoueur(idJr);
+        //            jr.P = pj;
+        //            elm = jr.RécupérerElémentRéseau(idElm);
+        //        //}
+        //        return elm;
+        //    }
+        //    return null;
+        //}
+
+        private List<Element> RécupérerElementAttrapéDeJoueur(ushort idJr, PointF pj)
+        {
+            Joueur jr = TrouverJoueur(idJr);
+            if (jr != null)
+            {
+                if (jr == joueur) idAttrapeEnCours = 0;
+                jr.P = pj;
+                List<Element>  lelm = jr.ToutRécupérer();
+                return lelm;
+            }
+            else return null;
+        }
+
+        public void IVK_LacherElement(ushort idJr, PointF pj, int idElmRecep)
+        {
+            if (EstDansSession)
+            {
+                Element elmRecep;
+                if (idElmRecep > 0)
+                {
+                    elmRecep = TrouverElementRéseau(idElmRecep);
+                    if (elmRecep == null) elmRecep = root;
+                }
+                else elmRecep = root;
+
+                //Element elmLach = RécupérerElementDeJoueur(idJr, pj, idElmLach);
+                List<Element> lelm = RécupérerElementAttrapéDeJoueur(idJr, pj);
+                if (lelm != null && elmRecep != null)
+                {
+                    if (idAttrapeEnCours != 0 && lelm.Any(e => e.IdentifiantRéseau == idAttrapeEnCours))
+                        idAttrapeEnCours = 0;
+                    lelm.ForEach(elmLach =>
+                    {
+                        elmLach = elmRecep.ElementLaché(elmLach);
+                        if (elmRecep != null)
+                        {
+                            //if (idAttrapeEnCours == elmLach.IdentifiantRéseau) idAttrapeEnCours = 0;
+                            if (elmLach is Pile) root.Suppression(elmLach);
+                            else root.ElementLaché(elmLach);
+                            //DonnerElementAJoueur(idJr, pj, elmRecep);
+                        }
+                    });
+                    this.Refresh();
+                }
+            }
+        }
+
+        public void IVK_RangerVersParent(int idElm)
+        {
+            if (idElm > 0 && EstDansSession)
+            {
+                Element elm = TrouverElementRéseau(idElm);
+                if (elm != null)
+                {
+                    elm = root.ElementLaché(elm);
+                    if (elm != null) root.Suppression(elm);
+                    Refresh();
+                }
+            }
+        }
+
+        public void IVK_Mélanger(int idElm, int seed)
+        {
+            if (idElm > 0 && EstDansSession)
+            {
+                Element elm = TrouverElementRéseau(idElm);
+                if (elm is Pile)
+                {
+                    (elm as Pile).Mélanger(new Random(seed));
+                    Refresh();
+                }
+            }
+        }
+
+        public void IVK_DéfausserElement(int idElm)
+        {
+            if (idElm > 0 && EstDansSession)
+            {
+                Element elm = TrouverElementRéseau(idElm);
+                elm = root.DéfausserElement(elm);
+                if (elm != null) Refresh();
+            }
+        }
+
+        public void IVK_ReMettreDansPioche(int idElm)
+        {
+            if (idElm > 0 && EstDansSession)
+            {
+                Défausse déffs = TrouverElementRéseau(idElm) as Défausse;
+                if (déffs != null)
+                {
+                    déffs.ReMettreDansLaPioche();
+                    Refresh();
+                }
+            }
+        }
+
+        public void IVK_MettreEnPioche(int idElm, int idPch)
+        {
+            if (idElm > 0 && EstDansSession)
+            {
+                Element elm = TrouverElementRéseau(idElm);
+                if (elm is Element2D)
+                {
+                    elm = root.DétacherElement(elm);
+                    if (elm is Element2D2F)
+                    {
+                        elm = new Pioche(elm as Element2D2F);
+                    }
+                    else if (elm is Element2D)
+                    {
+                        elm = new Pioche(elm as Element2D);
+                    }
+                    elm.IdentifiantRéseau = idPch;
+                    root.ElementLaché(elm);
+                    Refresh();
+                }
+            }
+        }
+
+        public void IVK_CréerLaDéfausse(int idElm, int idDefss)
+        {
+            if (idElm > 0 && EstDansSession)
+            {
+                Pioche pioch = TrouverElementRéseau(idElm) as Pioche;
+                if (pioch != null)
+                {
+                    Défausse deff = new Défausse(pioch);
+                    deff.IdentifiantRéseau = idDefss;
+                    root.ElementLaché(deff);
+                    Refresh();
+                }
+            }
+        }
+
+        public void IVK_MettreEnPaquet(int idElm, int idPaq)
+        {
+            if (idElm > 0 && EstDansSession)
+            {
+                Element elm = TrouverElementRéseau(idElm);
+                if (elm != null)
+                {
+                    elm = root.DétacherElement(elm);
+                    if (elm != null)
+                    {
+                        elm = new Paquet(elm);
+                        elm.IdentifiantRéseau = idPaq;
+                        root.ElementLaché(elm);
+                    }
+                    Refresh();
+                }
+            }
+        }
+
+        public void IVK_Supprimer(int idElm)
+        {
+            if (idElm > 0 && EstDansSession)
+            {
+                Element elm = TrouverElementRéseau(idElm);
+                elm = root.Suppression(elm);
+                if(elm != null) Refresh();
+            }
+        }
+
+        public void IVK_SupprimerTout()
+        {
+            if (EstDansSession)
+            {
+                Nétoyer();
+            }
+        }
+        #endregion
     }
 }

@@ -152,6 +152,8 @@
             this.MaximizeBox = false;
             this.Name = "CréerSession";
             this.Text = "Créer une session";
+            this.TopMost = true;
+            this.Shown += new System.EventHandler(this.CréerSession_Shown);
             this.ResumeLayout(false);
             this.PerformLayout();
 

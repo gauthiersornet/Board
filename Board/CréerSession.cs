@@ -18,9 +18,11 @@ namespace Board
 
         public string NomSession = null;
         public BigInteger SessionHashPwd = 0;
+        private Point p;
 
-        public CréerSession(ClientThreadBoard ct)
+        public CréerSession(ClientThreadBoard ct, Point p)
         {
+            this.p = p;
             clientThreadBoard = ct;
             InitializeComponent();
             this.DialogResult = DialogResult.No;
@@ -29,7 +31,7 @@ namespace Board
         private void btCréer_Click(object sender, EventArgs e)
         {
             txtNomSession.Text = txtNomSession.Text.Trim();
-            if (txtNomSession.Text == "")
+            if (String.IsNullOrWhiteSpace(txtNomSession.Text))
             {
                 MessageBox.Show("Veuillez saisir un nom de session.", "Erreur nom session", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
@@ -41,9 +43,9 @@ namespace Board
                 MessageBox.Show("Votre nom de session est trop long.", "Erreur nom session", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
-            if (txtNomSession.Text != "" && OutilsRéseau.EstChaineSecurisée(txtNomSession.Text) == false)
+            if (OutilsRéseau.EstChaineSecurisée(txtNomSession.Text) == false)
             {
-                MessageBox.Show("Votre identifiant de session est trop long.", "Erreur nom session", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Votre nom de session contient des caractères non authorisés.", "Erreur nom session", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
@@ -56,14 +58,23 @@ namespace Board
             BigInteger hashMotDePasseMaitre = OutilsRéseau.BIntHashPassword256(txtMdpMaitre.Text);
             BigInteger hashMotDePasseJoueur = OutilsRéseau.BIntHashPassword256(txtMdpJoueur.Text);
 
-            if(clientThreadBoard.EstConnecté && MessageBox.Show("Êtes-vous sûr de vouloir créer la session \"" + txtNomSession.Text + "\"", "Créer session ?", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            if(clientThreadBoard.EstIdentifié)
             {
-                clientThreadBoard.CréerSession(txtNomSession.Text, hashMotDePasseMaitre, hashMotDePasseJoueur, chkBxDemanderMaitre.Checked);
-                NomSession = txtNomSession.Text;
-                SessionHashPwd = hashMotDePasseMaitre;
-                this.DialogResult = DialogResult.Yes;
+                if (MessageBox.Show("Êtes-vous sûr de vouloir créer cette session \"" + txtNomSession.Text + "\"", "Créer session ?", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                {
+                    clientThreadBoard.CréerSession(txtNomSession.Text, hashMotDePasseMaitre, hashMotDePasseJoueur, chkBxDemanderMaitre.Checked);
+                    NomSession = txtNomSession.Text;
+                    SessionHashPwd = hashMotDePasseMaitre;
+                    this.DialogResult = DialogResult.Yes;
+                }
             }
             else MessageBox.Show("Vous êtes déconnecté.", "Erreur de connexion", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+
+        private void CréerSession_Shown(object sender, EventArgs e)
+        {
+            this.Left = p.X - this.Width / 2;
+            this.Top = p.Y - this.Height / 2;
         }
     }
 }

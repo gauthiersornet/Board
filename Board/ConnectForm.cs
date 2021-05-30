@@ -17,16 +17,18 @@ namespace Board
     {
         private Board boardAConnecter;
         public ClientThreadBoard connection;
+        private Point p;
 
-        public ConnectForm(Board board, ClientThreadBoard _connection = null)
+        public ConnectForm(Board board, Point p, ClientThreadBoard _connection = null)
         {
+            this.p = p;
             boardAConnecter = board;
             connection = _connection;
             InitializeComponent();
             this.DialogResult = DialogResult.None;
             if (_connection != null)
             {
-                txtIdentifiant.Text = connection.ObtenirIdentifiant();
+                txtIdentifiant.Text = connection.ObtenirIdentifiant() ?? "";
                 if(_connection.EstConnecté) ModeConnecté();
             }
             else ModeNonConnecté();
@@ -129,6 +131,17 @@ namespace Board
                 connection = null;
             }
             ModeNonConnecté();
+        }
+
+        private void ConnectForm_Shown(object sender, EventArgs e)
+        {
+            this.Left = p.X - this.Width / 2;
+            this.Top = p.Y - this.Height / 2;
+        }
+
+        private void GKeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (e.KeyChar == 13) btConnecter_Click(sender, e);
         }
     }
 }

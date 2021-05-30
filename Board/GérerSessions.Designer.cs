@@ -53,6 +53,7 @@
             this.txtMdpRejSession.PasswordChar = '*';
             this.txtMdpRejSession.Size = new System.Drawing.Size(250, 22);
             this.txtMdpRejSession.TabIndex = 24;
+            this.txtMdpRejSession.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.txtMdpRejSession_KeyPress);
             // 
             // btActualiser
             // 
@@ -91,6 +92,7 @@
             this.lstBxSessions.Name = "lstBxSessions";
             this.lstBxSessions.Size = new System.Drawing.Size(463, 212);
             this.lstBxSessions.TabIndex = 20;
+            this.lstBxSessions.DoubleClick += new System.EventHandler(this.lstBxSessions_DoubleClick);
             this.lstBxSessions.MouseUp += new System.Windows.Forms.MouseEventHandler(this.lstBxSessions_MouseUp);
             // 
             // GérerSessions
@@ -108,6 +110,7 @@
             this.MaximizeBox = false;
             this.Name = "GérerSessions";
             this.Text = "Gérer sessions";
+            this.Shown += new System.EventHandler(this.GérerSessions_Shown);
             this.ResumeLayout(false);
             this.PerformLayout();
 
