@@ -1,0 +1,22 @@
+lancer l'application Board.exe (dossier binaires board) 
+(utiliser le mode compatibilité WINDOWS 8 si elle ne se lance pas)
+
+
+clique droit de la souris dans le cadre blanc en haut à droite,
+puis cliquer sur connecter et renseigner :
+serveur : www.gameonboard.cyou 
+port : 8080
+Identifiant : celui de votre choix (pseudo) exemple "tiger"
+Mot de passe : xcomover
+
+
+une fois la session de jeu ouverte:
+maintient du clique gauche de la souris sur une carte pour la déplacer.
+molette de la souris sur une carte pour effectuer une rotation de la carte.
+BLOQUER LE DEPLACEMENT d'UNE CARTE : clique droit sur la carte => ETAT => POSTION MOBILE.
+FIGER UNE CARTE en ROTATION : clique droit sur la carte => ETAT => ROTATION MOBILE.
+ZOMMER/DEZOOMER la table de jeux : molette de la souris sur la surface de la table.
+DEFAUSSER UNE CARTE : clique droit sur la carte => défausser
+
+....
+Par Adrien Vedrenne
