@@ -9,6 +9,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ModuleBOARD", "ModuleBOARD\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BoardServer", "BoardServer\BoardServer.csproj", "{1838FCAF-9417-46C4-87E0-5A8B3230793A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BoardGameFabrique", "BoardGameFabrique\BoardGameFabrique.csproj", "{50E8C5AF-9A4C-4813-927A-D4AA26B2EAB0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{1838FCAF-9417-46C4-87E0-5A8B3230793A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1838FCAF-9417-46C4-87E0-5A8B3230793A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1838FCAF-9417-46C4-87E0-5A8B3230793A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{50E8C5AF-9A4C-4813-927A-D4AA26B2EAB0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{50E8C5AF-9A4C-4813-927A-D4AA26B2EAB0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{50E8C5AF-9A4C-4813-927A-D4AA26B2EAB0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{50E8C5AF-9A4C-4813-927A-D4AA26B2EAB0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
