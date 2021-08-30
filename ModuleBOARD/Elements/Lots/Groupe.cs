@@ -5,6 +5,7 @@ using ModuleBOARD.Réseau;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -32,15 +33,16 @@ namespace ModuleBOARD.Elements.Lots
             get => new PointF(float.MaxValue, float.MaxValue);
         }
 
-        public override bool IsAt(PointF mp, float angle)
+        /*public override bool IsAt(PointF mp, float angle)
         {
             return true;
-        }
+        }*/
 
-        public override bool IsAt(PointF mp, PointF psz, float angle)
+        /*public override bool IsAt(PointF mp, PointF psz, float angle)
         {
-            return true;
-        }
+            if (psz.X == float.MaxValue && psz.Y == float.MaxValue) return true;
+            else return base.IsAt(mp, psz, angle);
+        }*/
 
         public Groupe()
         {
@@ -156,8 +158,15 @@ namespace ModuleBOARD.Elements.Lots
 
         public override void Dessiner(RectangleF vue, float angle, Graphics g, PointF p)
         {
-            p.X += GC.P.X;
-            p.Y += GC.P.Y;
+            /*p.X -= GC.P.X;
+            p.Y -= GC.P.Y;*/
+            Matrix svMat = g.Transform;
+            g.TranslateTransform(GC.P.X, GC.P.Y);
+            if (GC.A != 0.0f)
+            {
+                g.RotateTransform(GC.A);
+                angle += GC.A;
+            }
             if (LstElements != null)
             {
                 for (int i= LstElements.Count-1; i>=0; --i)
@@ -175,6 +184,7 @@ namespace ModuleBOARD.Elements.Lots
                         LstFigurines[i].DessinerFigurine(vue, angle, g, p);
                 }
             }
+            g.Transform = svMat;
         }
 
         public void TrierZFigurine(float angle)
@@ -245,6 +255,16 @@ namespace ModuleBOARD.Elements.Lots
         {
             mp.X -= GC.P.X;
             mp.Y -= GC.P.Y;
+            if (GC.A != 0.0f)
+            {
+                Matrix m = new Matrix();
+                m.Rotate(GC.A);
+                mp = new PointF
+                    (
+                        mp.X * m.Elements[0] + mp.Y * m.Elements[1],
+                        mp.X * m.Elements[2] + mp.Y * m.Elements[3]
+                    );
+            }
 
             if (LstFigurines != null)
             {
@@ -282,6 +302,17 @@ namespace ModuleBOARD.Elements.Lots
         {
             mp.X -= GC.P.X;
             mp.Y -= GC.P.Y;
+            if (GC.A != 0.0f)
+            {
+                Matrix m = new Matrix();
+                m.Rotate(GC.A);
+                mp = new PointF
+                    (
+                        mp.X * m.Elements[0] + mp.Y * m.Elements[1],
+                        mp.X * m.Elements[2] + mp.Y * m.Elements[3]
+                    );
+            }
+
             List<(Element, Element)> res = null;
 
             if (LstFigurines != null)
@@ -351,6 +382,16 @@ namespace ModuleBOARD.Elements.Lots
         {
             mp.X -= GC.P.X;
             mp.Y -= GC.P.Y;
+            if (GC.A != 0.0f)
+            {
+                Matrix m = new Matrix();
+                m.Rotate(GC.A);
+                mp = new PointF
+                    (
+                        mp.X * m.Elements[0] + mp.Y * m.Elements[1],
+                        mp.X * m.Elements[2] + mp.Y * m.Elements[3]
+                    );
+            }
 
             if (LstFigurines != null)
             {
@@ -378,6 +419,17 @@ namespace ModuleBOARD.Elements.Lots
         {
             mp.X -= GC.P.X;
             mp.Y -= GC.P.Y;
+            if (GC.A != 0.0f)
+            {
+                Matrix m = new Matrix();
+                m.Rotate(GC.A);
+                mp = new PointF
+                    (
+                        mp.X * m.Elements[0] + mp.Y * m.Elements[1],
+                        mp.X * m.Elements[2] + mp.Y * m.Elements[3]
+                    );
+            }
+
             List<Element> res = null;
 
             if (LstFigurines != null)
@@ -476,9 +528,10 @@ namespace ModuleBOARD.Elements.Lots
                 if (elm.ElmType == EType.Groupe) Fusionner(elm as Groupe);
                 else
                 {
-                    elm.GC.P.X -= GC.P.X;
-                    elm.GC.P.Y -= GC.P.X;
-                    if(elm is IFigurine)
+                    /*elm.GC.P.X -= GC.P.X;
+                    elm.GC.P.Y -= GC.P.X;*/
+                    elm.GC.Projection(GC);
+                    if (elm is IFigurine)
                     {
                         if (LstFigurines == null) LstFigurines = new List<IFigurine>();
                         AddFigurine(elm as IFigurine);
@@ -502,11 +555,13 @@ namespace ModuleBOARD.Elements.Lots
                 {
                     foreach (Element elm in pq.LstFigurines)
                     {
-                        elm.GC.P.X += pq.GC.P.X;
-                        elm.GC.P.Y += pq.GC.P.Y;
+                        elm.GC.ProjectionInv(pq.GC);
+                        /*elm.GC.P.X += pq.GC.P.X;
+                        elm.GC.P.Y += pq.GC.P.Y;*/
 
-                        elm.GC.P.X -= GC.P.X;
-                        elm.GC.P.Y -= GC.P.Y;
+                        elm.GC.Projection(GC);
+                        /*elm.GC.P.X -= GC.P.X;
+                        elm.GC.P.Y -= GC.P.Y;*/
                     }
 
                     if (LstFigurines != null)
@@ -524,11 +579,13 @@ namespace ModuleBOARD.Elements.Lots
                 {
                     foreach (Element elm in pq.LstElements)
                     {
-                        elm.GC.P.X += pq.GC.P.X;
-                        elm.GC.P.Y += pq.GC.P.Y;
+                        elm.GC.ProjectionInv(pq.GC);
+                        /*elm.GC.P.X += pq.GC.P.X;
+                        elm.GC.P.Y += pq.GC.P.Y;*/
 
-                        elm.GC.P.X -= GC.P.X;
-                        elm.GC.P.Y -= GC.P.Y;
+                        elm.GC.Projection(GC);
+                        /*elm.GC.P.X -= GC.P.X;
+                        elm.GC.P.Y -= GC.P.Y;*/
                     }
 
                     if (LstElements == null) LstElements = new List<Element>();
@@ -564,8 +621,9 @@ namespace ModuleBOARD.Elements.Lots
         {
             if (elm != null && (elm is Groupe) == false)
             {
-                elm.GC.P.X -= GC.P.X;
-                elm.GC.P.Y -= GC.P.Y;
+                /*elm.GC.P.X -= GC.P.X;
+                elm.GC.P.Y -= GC.P.Y;*/
+                elm.GC.Projection(GC);
                 if (elm is IFigurine)
                 {
                     AddFigurine(elm as IFigurine);
@@ -904,8 +962,10 @@ namespace ModuleBOARD.Elements.Lots
                                         if (LstElements.Count == 0) LstElements = null;
                                     }
                                 }
-                                felm.GC.P.X += GC.P.X;
+                                /*felm.GC.P.X += GC.P.X;
                                 felm.GC.P.Y += GC.P.Y;
+                                felm.GC.A += GC.A;*/
+                                felm.GC.ProjectionInv(GC);
                                 return felm;
                             }
                         }
@@ -924,8 +984,9 @@ namespace ModuleBOARD.Elements.Lots
                                     LstElements.RemoveAt(i);
                                     if (LstElements.Count == 0) LstElements = null;
                                 }
-                                felm.GC.P.X += GC.P.X;
-                                felm.GC.P.Y += GC.P.Y;
+                                /*felm.GC.P.X += GC.P.X;
+                                felm.GC.P.Y += GC.P.Y;*/
+                                felm.GC.ProjectionInv(GC);
                                 return felm;
                             }
                         }
