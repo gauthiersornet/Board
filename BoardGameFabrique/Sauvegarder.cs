@@ -10,6 +10,15 @@ using System.Windows.Forms;
 
 namespace BoardGameFabrique
 {
+    public enum EXMLGen
+    {
+        vide = 0,
+        pile = 1,
+        pioche = 2,
+        piocheETdéfausse = 3,
+        dé = 4
+    }
+
     public partial class Sauvegarder : Form
     {
         private double tailleMoyW;
@@ -18,8 +27,9 @@ namespace BoardGameFabrique
         public int TailleFinaleW;
         public int TailleFinaleH;
         public Int64 Qualité;
+        public EXMLGen xmlGen;
 
-        public bool GénérerXML;
+        public string ImageDos;
 
         public Sauvegarder(double _tailleMoyW, double _tailleMoyH)
         {
@@ -32,7 +42,8 @@ namespace BoardGameFabrique
             txtTailleFinalW.Text = lblTMoyW.Text;
             lblTMoyH.Text = TailleFinaleH.ToString();
             txtTailleFinalH.Text = lblTMoyH.Text;
-            GénérerXML = true;
+            cbxXMLGen.SelectedIndex = 0;
+            txtFichierImgDos.Text = "";
         }
 
         private void btValid_Click(object sender, EventArgs e)
@@ -40,8 +51,9 @@ namespace BoardGameFabrique
             TailleFinaleW = int.Parse(txtTailleFinalW.Text);
             TailleFinaleH = int.Parse(txtTailleFinalH.Text);
             Qualité = scrolBarQualité.Value;
-            GénérerXML = chkBxGénérerXML.Checked;
+            xmlGen = (EXMLGen)cbxXMLGen.SelectedIndex;
             DialogResult = DialogResult.OK;
+            ImageDos = (String.IsNullOrWhiteSpace(txtFichierImgDos.Text) ? null : txtFichierImgDos.Text);
         }
 
         private void scrolPourMille_ValueChanged(object sender, EventArgs e)

@@ -44,6 +44,7 @@
             this.WindowState = System.Windows.Forms.FormWindowState.Maximized;
             this.DragDrop += new System.Windows.Forms.DragEventHandler(this.BoardGameFabrique_DragDrop);
             this.DragEnter += new System.Windows.Forms.DragEventHandler(this.BoardGameFabrique_DragEnter);
+            this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.BoardGameFabrique_KeyDown);
             this.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.BoardGameFabrique_KeyPress);
             this.KeyUp += new System.Windows.Forms.KeyEventHandler(this.BoardGameFabrique_KeyUp);
             this.MouseClick += new System.Windows.Forms.MouseEventHandler(this.BoardGameFabrique_MouseClick);

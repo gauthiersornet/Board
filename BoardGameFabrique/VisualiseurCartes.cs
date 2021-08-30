@@ -26,7 +26,9 @@ namespace BoardGameFabrique
         {
             if (idxCartes >= 0 && lstCartes!=null && lstCartes.Any())
             {
-                this.Text = "Visualiseur de cartes n°" + idxCartes + " quantité " + lstCartes[idxCartes].Item3;
+                if(lstCartes[idxCartes].Item3 > 0)
+                    this.Text = "Visualiseur de cartes n°" + idxCartes + " quantité " + lstCartes[idxCartes].Item3;
+                else this.Text = "Visualiseur de cartes n°" + idxCartes + " Dos du paquet";
             }
             else this.Text = "Visualiseur de cartes";
         }
@@ -144,6 +146,7 @@ namespace BoardGameFabrique
                     lstCartes.RemoveAt(idxCartes);
                     if (idxCartes < 0) idxCartes = 0;
                     else if (idxCartes >= lstCartes.Count) idxCartes = lstCartes.Count - 1;
+                    RefreshTitre();
                     Refresh();
                 }
             }

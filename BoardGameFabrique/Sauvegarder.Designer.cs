@@ -43,12 +43,15 @@
             this.scrolBarQualité = new System.Windows.Forms.HScrollBar();
             this.label4 = new System.Windows.Forms.Label();
             this.lblQualit = new System.Windows.Forms.Label();
-            this.chkBxGénérerXML = new System.Windows.Forms.CheckBox();
+            this.cbxXMLGen = new System.Windows.Forms.ComboBox();
+            this.label7 = new System.Windows.Forms.Label();
+            this.label8 = new System.Windows.Forms.Label();
+            this.txtFichierImgDos = new System.Windows.Forms.TextBox();
             this.SuspendLayout();
             // 
             // btValid
             // 
-            this.btValid.Location = new System.Drawing.Point(189, 209);
+            this.btValid.Location = new System.Drawing.Point(189, 253);
             this.btValid.Name = "btValid";
             this.btValid.Size = new System.Drawing.Size(80, 32);
             this.btValid.TabIndex = 2;
@@ -60,7 +63,7 @@
             // 
             this.txtTailleFinalW.Location = new System.Drawing.Point(189, 113);
             this.txtTailleFinalW.Name = "txtTailleFinalW";
-            this.txtTailleFinalW.Size = new System.Drawing.Size(124, 22);
+            this.txtTailleFinalW.Size = new System.Drawing.Size(100, 22);
             this.txtTailleFinalW.TabIndex = 0;
             this.txtTailleFinalW.Text = "224";
             // 
@@ -87,7 +90,7 @@
             // 
             this.scrolPourMille.LargeChange = 1;
             this.scrolPourMille.Location = new System.Drawing.Point(28, 79);
-            this.scrolPourMille.Maximum = 1000;
+            this.scrolPourMille.Maximum = 3000;
             this.scrolPourMille.Minimum = 1;
             this.scrolPourMille.Name = "scrolPourMille";
             this.scrolPourMille.Size = new System.Drawing.Size(439, 24);
@@ -144,7 +147,7 @@
             // label6
             // 
             this.label6.AutoSize = true;
-            this.label6.Location = new System.Drawing.Point(323, 118);
+            this.label6.Location = new System.Drawing.Point(293, 118);
             this.label6.Name = "label6";
             this.label6.Size = new System.Drawing.Size(14, 17);
             this.label6.TabIndex = 13;
@@ -152,9 +155,9 @@
             // 
             // txtTailleFinalH
             // 
-            this.txtTailleFinalH.Location = new System.Drawing.Point(343, 113);
+            this.txtTailleFinalH.Location = new System.Drawing.Point(309, 113);
             this.txtTailleFinalH.Name = "txtTailleFinalH";
-            this.txtTailleFinalH.Size = new System.Drawing.Size(124, 22);
+            this.txtTailleFinalH.Size = new System.Drawing.Size(100, 22);
             this.txtTailleFinalH.TabIndex = 1;
             this.txtTailleFinalH.Text = "312";
             // 
@@ -187,24 +190,54 @@
             this.lblQualit.TabIndex = 17;
             this.lblQualit.Text = "100%";
             // 
-            // chkBxGénérerXML
+            // cbxXMLGen
             // 
-            this.chkBxGénérerXML.AutoSize = true;
-            this.chkBxGénérerXML.Checked = true;
-            this.chkBxGénérerXML.CheckState = System.Windows.Forms.CheckState.Checked;
-            this.chkBxGénérerXML.Location = new System.Drawing.Point(28, 172);
-            this.chkBxGénérerXML.Name = "chkBxGénérerXML";
-            this.chkBxGénérerXML.Size = new System.Drawing.Size(130, 21);
-            this.chkBxGénérerXML.TabIndex = 18;
-            this.chkBxGénérerXML.Text = "Générer le XML";
-            this.chkBxGénérerXML.UseVisualStyleBackColor = true;
+            this.cbxXMLGen.FormattingEnabled = true;
+            this.cbxXMLGen.Items.AddRange(new object[] {
+            "aucun",
+            "pile de cartes",
+            "pioche de cartes",
+            "pioche défausse de cartes",
+            "dé"});
+            this.cbxXMLGen.Location = new System.Drawing.Point(180, 179);
+            this.cbxXMLGen.Name = "cbxXMLGen";
+            this.cbxXMLGen.Size = new System.Drawing.Size(275, 24);
+            this.cbxXMLGen.TabIndex = 18;
+            // 
+            // label7
+            // 
+            this.label7.AutoSize = true;
+            this.label7.Location = new System.Drawing.Point(25, 182);
+            this.label7.Name = "label7";
+            this.label7.Size = new System.Drawing.Size(149, 17);
+            this.label7.TabIndex = 19;
+            this.label7.Text = "Type de XML généré :";
+            // 
+            // label8
+            // 
+            this.label8.AutoSize = true;
+            this.label8.Location = new System.Drawing.Point(25, 210);
+            this.label8.Name = "label8";
+            this.label8.Size = new System.Drawing.Size(127, 17);
+            this.label8.TabIndex = 20;
+            this.label8.Text = "Fichier image dos :";
+            // 
+            // txtFichierImgDos
+            // 
+            this.txtFichierImgDos.Location = new System.Drawing.Point(180, 210);
+            this.txtFichierImgDos.Name = "txtFichierImgDos";
+            this.txtFichierImgDos.Size = new System.Drawing.Size(275, 22);
+            this.txtFichierImgDos.TabIndex = 21;
             // 
             // Sauvegarder
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(478, 253);
-            this.Controls.Add(this.chkBxGénérerXML);
+            this.ClientSize = new System.Drawing.Size(478, 294);
+            this.Controls.Add(this.txtFichierImgDos);
+            this.Controls.Add(this.label8);
+            this.Controls.Add(this.label7);
+            this.Controls.Add(this.cbxXMLGen);
             this.Controls.Add(this.lblQualit);
             this.Controls.Add(this.label4);
             this.Controls.Add(this.scrolBarQualité);
@@ -247,6 +280,9 @@
         private System.Windows.Forms.HScrollBar scrolBarQualité;
         private System.Windows.Forms.Label label4;
         private System.Windows.Forms.Label lblQualit;
-        private System.Windows.Forms.CheckBox chkBxGénérerXML;
+        private System.Windows.Forms.ComboBox cbxXMLGen;
+        private System.Windows.Forms.Label label7;
+        private System.Windows.Forms.Label label8;
+        private System.Windows.Forms.TextBox txtFichierImgDos;
     }
 }
