@@ -65,24 +65,32 @@ namespace Board
 
         private void btRejoindre_Click(object sender, EventArgs e)
         {
-            if (!clientThreadBoard.EstDansSession)
+            if (clientThreadBoard != null && clientThreadBoard.EstIdentifié)
             {
-                if (lstBxSessions.SelectedItem != null && MessageBox.Show("Effacer la table ?", "Votre table sera éffacées, êtes-vous sur de vouloir joindre la session ?", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                if (!clientThreadBoard.EstDansSession)
                 {
-                    SessionChoisie = lstBxSessions.SelectedItem.ToString();
-                    BigInteger hash = OutilsRéseau.BIntHashPassword256(txtMdpRejSession.Text);
-                    clientThreadBoard.EnqueueCommande(ModuleBOARD.Réseau.ClientThread.ServeurCodeCommande.RejoindreSession, SessionChoisie, hash);
-                    this.DialogResult = DialogResult.Yes;
+                    if (lstBxSessions.SelectedItem != null && MessageBox.Show("Effacer la table ?", "Votre table sera éffacées, êtes-vous sur de vouloir joindre la session ?", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                    {
+                        SessionChoisie = lstBxSessions.SelectedItem.ToString();
+                        BigInteger hash = OutilsRéseau.BIntHashPassword256(txtMdpRejSession.Text);
+                        clientThreadBoard.EnqueueCommande(ModuleBOARD.Réseau.ClientThread.ServeurCodeCommande.RejoindreSession, SessionChoisie, hash);
+                        this.DialogResult = DialogResult.Yes;
+                    }
+                }
+                else // c'est une déco !
+                {
+                    string message;
+                    if (clientThreadBoard.AEnvoiEnCours) message = "Des envois sont en cours, vos tranfères seront intérrompus...\r\n";
+                    else message = "";
+                    message += "Êtes-vous sûr de vouloir quitter la session \"" + SessionChoisie + "\" ?";
+                    if (MessageBox.Show(message, "Quitter la session en cours", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                    {
+                        clientThreadBoard.EnqueueCommande(ModuleBOARD.Réseau.ClientThread.ServeurCodeCommande.QuitterSession);
+                        this.DialogResult = DialogResult.Yes;
+                    }
                 }
             }
-            else // c'est une déco !
-            {
-                if (MessageBox.Show("Quitter la session en cours", "Êtes-vous sûr de vouloir quitter la session \"" + SessionChoisie + "\" ?", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
-                {
-                    clientThreadBoard.EnqueueCommande(ModuleBOARD.Réseau.ClientThread.ServeurCodeCommande.QuitterSession);
-                    this.DialogResult = DialogResult.Yes;
-                }
-            }
+            else DialogResult = DialogResult.No;
         }
 
         private void SupprimerSession()
@@ -129,7 +137,15 @@ namespace Board
 
         private void txtMdpRejSession_KeyPress(object sender, KeyPressEventArgs e)
         {
-            if(e.KeyChar == 13)
+            if(e.KeyChar == '\r')
+            {
+                btRejoindre_Click(sender, e);
+            }
+        }
+
+        private void lstBxSessions_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (e.KeyChar == '\r')
             {
                 btRejoindre_Click(sender, e);
             }

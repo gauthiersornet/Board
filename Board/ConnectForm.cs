@@ -16,22 +16,30 @@ namespace Board
     public partial class ConnectForm : Form
     {
         private Board boardAConnecter;
-        public ClientThreadBoard connection;
+        public ClientThreadBoard connexion;
         private Point p;
 
-        public ConnectForm(Board board, Point p, ClientThreadBoard _connection = null)
+
+        public ConnectForm(Board board, Point p, string serv, string port, string login, string mdp, ClientThreadBoard _connection = null)
         {
             this.p = p;
             boardAConnecter = board;
-            connection = _connection;
+            connexion = _connection;
             InitializeComponent();
             this.DialogResult = DialogResult.None;
             if (_connection != null)
             {
-                txtIdentifiant.Text = connection.ObtenirIdentifiant() ?? "";
+                txtIdentifiant.Text = connexion.ObtenirIdentifiant() ?? "";
                 if(_connection.EstConnecté) ModeConnecté();
             }
-            else ModeNonConnecté();
+            else
+            {
+                ModeNonConnecté();
+                txtNomServeur.Text = serv;
+                txtNumPort.Text = port;
+                txtIdentifiant.Text = login;
+                txtPwdConnect.Text = mdp;
+            }
         }
 
         private void btConnecter_Click(object sender, EventArgs e)
@@ -41,10 +49,10 @@ namespace Board
                 if (txtIdentifiant.Text.Length > OutilsRéseau.NB_OCTET_NOM_UTILISATEUR_MAX ||
                     UTF8Encoding.UTF8.GetBytes(txtIdentifiant.Text).Length > OutilsRéseau.NB_OCTET_NOM_UTILISATEUR_MAX)
                 {
-                    MessageBox.Show("Votre identifiant est trop long.",  "Erreur identifiant", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show("Votre identifiant est trop long.", "Erreur identifiant", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
-                if (txtIdentifiant.Text != "" &&  OutilsRéseau.EstChaineSecurisée(txtIdentifiant.Text) == false)
+                if (txtIdentifiant.Text != "" && OutilsRéseau.EstChaineSecurisée(txtIdentifiant.Text) == false)
                 {
                     MessageBox.Show("Votre identifiant n'est pas conforme.", "Erreur identifiant", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
@@ -59,8 +67,8 @@ namespace Board
                 var pwhash = OutilsRéseau.BIntHashPassword256(txtPwdConnect.Text);
                 try
                 {
-                    connection = new ClientThreadBoard(txtIdentifiant.Text, pwhash, new TcpClient(txtNomServeur.Text, int.Parse(txtNumPort.Text)), boardAConnecter);
-                    connection.Lancer();
+                    connexion = new ClientThreadBoard(txtIdentifiant.Text, pwhash, new TcpClient(txtNomServeur.Text, int.Parse(txtNumPort.Text)), boardAConnecter);
+                    connexion.Lancer();
                     //this.DialogResult = DialogResult.OK;
                     this.DialogResult = DialogResult.Yes;
                 }
@@ -84,20 +92,27 @@ namespace Board
                     this.DialogResult = DialogResult.No;
                 }
             }
-            else if(MessageBox.Show("Êtes-vous sûr de vouloir vous déconnecter ?", "Déconnecter ?", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            else
             {
-                Déconnecter();
-                /*connexEtablie = false;
-                this.Height = 200;
-                lstBxSessions.Items.Clear();
-                btConnecter.Enabled = false;
-                connection.Close();
-                if (connection.SafeStop() == false)
-                    connection.Abort();
-                connection = null;
-                btConnecter.Text = "Connecter";
-                btConnecter.Enabled = true;*/
-                this.DialogResult = DialogResult.Yes;
+                string message;
+                if (connexion != null && connexion.AEnvoiEnCours) message = "Des envois sont en cours, vos tranfères seront intérrompus...\r\n";
+                else message = "";
+                message += "Êtes-vous sûr de vouloir vous déconnecter ?";
+                if (MessageBox.Show(message, "Déconnecter ?", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                {
+                    Déconnecter();
+                    /*connexEtablie = false;
+                    this.Height = 200;
+                    lstBxSessions.Items.Clear();
+                    btConnecter.Enabled = false;
+                    connection.Close();
+                    if (connection.SafeStop() == false)
+                        connection.Abort();
+                    connection = null;
+                    btConnecter.Text = "Connecter";
+                    btConnecter.Enabled = true;*/
+                    this.DialogResult = DialogResult.Yes;
+                }
             }
         }
 
@@ -123,12 +138,12 @@ namespace Board
 
         private void Déconnecter()
         {
-            if (connection != null)
+            if (connexion != null)
             {
-                connection.Close();
-                if (connection.SafeStop() == false)
-                    connection.Abort();
-                connection = null;
+                connexion.Close();
+                if (connexion.SafeStop() == false)
+                    connexion.Abort();
+                connexion = null;
             }
             ModeNonConnecté();
         }
@@ -141,7 +156,7 @@ namespace Board
 
         private void GKeyPress(object sender, KeyPressEventArgs e)
         {
-            if (e.KeyChar == 13) btConnecter_Click(sender, e);
+            if (e.KeyChar == '\r') btConnecter_Click(sender, e);
         }
     }
 }

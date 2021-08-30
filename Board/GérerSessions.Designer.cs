@@ -93,6 +93,7 @@
             this.lstBxSessions.Size = new System.Drawing.Size(463, 212);
             this.lstBxSessions.TabIndex = 20;
             this.lstBxSessions.DoubleClick += new System.EventHandler(this.lstBxSessions_DoubleClick);
+            this.lstBxSessions.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.lstBxSessions_KeyPress);
             this.lstBxSessions.MouseUp += new System.Windows.Forms.MouseEventHandler(this.lstBxSessions_MouseUp);
             // 
             // GérerSessions
