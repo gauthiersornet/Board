@@ -94,14 +94,14 @@ namespace ModuleBOARD.Elements.Base
         }
 
         //public string PremierModelInconnue { get { lock (DModelInco) { return DModelInco.Keys.FirstOrDefault(); } } }
-        public List<string> ModelInconnues
+        public SortedSet<string> ModelInconnues
         {
             get
             {
-                List<string> res;
+                SortedSet<string> res;
                 lock (LstModelInco)
                 {
-                    res = LstModelInco.ToList();
+                    res = new SortedSet<string>(LstModelInco);
                     LstModelInco.Clear();
                 }
                 return res;

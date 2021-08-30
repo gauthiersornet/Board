@@ -41,7 +41,8 @@ namespace ModuleBOARD.Elements.Base
                 MD5 md5Hash = MD5.Create();
                 Model2_5D modl = new Model2_5D();
                 string strNbl = paq.Attributes?.GetNamedItem("nbl")?.Value;
-                List<Image> Images = bibliothèqueImage.LoadSImages(path, fileImg, paq).Select(img => { var b = new Bitmap(img); b.Tag = img.Tag; b.MakeTransparent(); return (Image)b; }).ToList();
+                bool transparente = (paq.Attributes?.GetNamedItem("opaque") == null);
+                List<Image> Images = bibliothèqueImage.LoadSImages(path, fileImg, paq); //.Select(img => { var b = new Bitmap(img); b.Tag = img.Tag; b.MakeTransparent(); return (Image)b; }).ToList();
                 int accw = 0;
                 int acch = 0;
                 foreach (Image img in Images)
@@ -77,7 +78,7 @@ namespace ModuleBOARD.Elements.Base
                     modl.imagesDessus = Images.Take(nbi).Select(img => img).ToArray();
                     modl.imagesDessous = Images.Skip(nbi).Select(img => img).Take(nbi).ToArray();
                 }
-                modl.Tag = BibliothèqueImage.ImageInfoToSig(md5Hash.Hash, accw, acch, fileImg);
+                modl.Tag = BibliothèqueImage.ImageInfoToSig(md5Hash.Hash, 100, 0, 0, accw, acch, fileImg);
                 return modl;
             }
             else return null;
@@ -125,9 +126,9 @@ namespace ModuleBOARD.Elements.Base
         public Model2_5D(Stream stream, BibliothèqueImage bibImg)
         {
             Tag = stream.ReadString();
-            imagesDessus = (stream.ReadObject(typeof(string[])) as string[]).Select(s => (s!=null && s.Length>=28 ? bibImg.RécupérerOuCréerImage(s) : null)).ToArray();
+            imagesDessus = (stream.DésérialiserObject(typeof(string[])) as string[]).Select(s => (s!=null && s.Length>=28 ? bibImg.RécupérerOuCréerImage(s) : null)).ToArray();
             if (imagesDessus.Length == 0) imagesDessus = null;
-            imagesDessous = (stream.ReadObject(typeof(string[])) as string[]).Select(s => (s != null && s.Length >= 28 ? bibImg.RécupérerOuCréerImage(s) : null)).ToArray();
+            imagesDessous = (stream.DésérialiserObject(typeof(string[])) as string[]).Select(s => (s != null && s.Length >= 28 ? bibImg.RécupérerOuCréerImage(s) : null)).ToArray();
             if (imagesDessous.Length == 0) imagesDessous = null;
         }
 

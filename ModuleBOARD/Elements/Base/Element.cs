@@ -1,4 +1,5 @@
 ﻿using ModuleBOARD.Elements.Lots;
+using ModuleBOARD.Elements.Lots.Dés;
 using ModuleBOARD.Elements.Lots.Piles;
 using ModuleBOARD.Elements.Pieces;
 using ModuleBOARD.Réseau;
@@ -83,10 +84,11 @@ namespace ModuleBOARD.Elements.Base
         [Flags]
         public enum EPickUpAction
         {
-            Déplacer = (1 << 2),
+            Piocher = (1 << 2),
             Tourner = (1 << 3),
             Retourner = (1 << 4),
-            Roulette = (1 << 8),
+            Attraper = (1 << 8),
+            Roulette = (1 << 9),
         };
 
         public int IdentifiantRéseau = 0; //Inférieur à zéro alors élément local, sinon élément global
@@ -133,6 +135,7 @@ namespace ModuleBOARD.Elements.Base
                 case "PILE": elm = new Pile(path, xmln, pZero, bibliothèqueImage); break;
                 case "PIOCHE": elm = new Pioche(path, xmln, pZero, bibliothèqueImage); break;
                 case "DEFFAUSE": elm = new Défausse(path, xmln, pZero, bibliothèqueImage); break;
+                case "DES": elm = new Dés(path, xmln, pZero, bibliothèqueImage); break;
                 case "PAQUET": elm = new Paquet(path, xmln, pZero, _dElements, bibliothèqueImage, bibliothèqueModel); break;
                 case "FIGURINE": elm = new Figurine(path, xmln, pZero, bibliothèqueImage, bibliothèqueModel); break;
                 default: elm = null; break;
@@ -155,7 +158,7 @@ namespace ModuleBOARD.Elements.Base
 
             string strE = att?.GetNamedItem("echl")?.Value;
             float echl;
-            if (strE == null || float.TryParse(strE, out echl) == false) echl = 180.0f;
+            if (strE == null || float.TryParse(strE, out echl) == false) echl = 100.0f;
             GC.E = echl;
 
             string strA = att?.GetNamedItem("ang")?.Value;
@@ -205,6 +208,7 @@ namespace ModuleBOARD.Elements.Base
 
         //public Paquet Parent;
         public abstract void Dessiner(RectangleF vue, float angle, Graphics g, PointF p);
+        //public abstract void DessinerOpposée(RectangleF vue, float angle, Graphics g, PointF p);//Desinner en opposée la pièce
 
         public virtual (Element, Element) MousePickAvecContAt(int netId)
         {
@@ -222,6 +226,7 @@ namespace ModuleBOARD.Elements.Base
         /// <returns></returns>
         public virtual (Element, Element) MousePickAvecContAt(PointF mp, float angle, EPickUpAction action = 0)
         {
+            if (action.HasFlag(EPickUpAction.Attraper)) action |= EPickUpAction.Piocher;
             if (action.HasFlag(EPickUpAction.Roulette)) action |= EPickUpAction.Tourner;
             if (!((EEtat)action != 0 && Etat.HasFlag((EEtat)action)) && IsAt(mp, angle)) return (this, null);
             else return (null, null);
@@ -235,6 +240,7 @@ namespace ModuleBOARD.Elements.Base
 
         public virtual List<(Element, Element)> MousePickAllAvecContAt(PointF mp, float angle, EPickUpAction action = 0)
         {
+            if (action.HasFlag(EPickUpAction.Attraper)) action |= EPickUpAction.Piocher;
             if (action.HasFlag(EPickUpAction.Roulette)) action |= EPickUpAction.Tourner;
             if (!((EEtat)action != 0 && Etat.HasFlag((EEtat)action)) && IsAt(mp, angle)) return new List<(Element, Element)>() { (this, null) };
             else return null;
@@ -437,25 +443,20 @@ namespace ModuleBOARD.Elements.Base
 
         static private readonly string[][] libellé_état = new string[][]
             {
-                new string[2]{ "Debout", "Couché" },
-                new string[2]{ "À l'endroit", "À l'envers" },
-                new string[2]{ "Position mobile", "Position fixe" },
-                new string[2]{ "Rotation mobile", "Rotation fixe" },
-                new string[2]{ "Retournable", "Non Retournable" }
+                new string[2]{ "Coucher", "Relever" },
+                new string[2]{ "Mettre à l'envers", "Mettre à l'endroit" },
+                new string[2]{ "Bloquer position ", "Débloquer position " },
+                new string[2]{ "Bloquer Rotation", "Débloquer rotation" },
+                new string[2]{ "Rendre inretournable", "Rendre retournable" }
             };
 
         virtual public ContextMenu Menu(IBoard ctrl)
         {
             ContextMenu cm = new ContextMenu();
-            if (Etat.HasFlag(EEtat.RotationFixe) == false)
+            /*if (Etat.HasFlag(EEtat.RotationFixe) == false)
             {
                 cm.MenuItems.Add("Rotation", new MenuItem[]
                 {
-                    /*new MenuItem(" -45", new EventHandler((o,e) => { GC.A=(GC.A + (360.0f-45.0f)) % 360.0f; ctrl.Refresh(); })),
-                    new MenuItem(" -90", new EventHandler((o,e) => { GC.A=(GC.A + (360.0f-90.0f)) % 360.0f; ctrl.Refresh(); })),
-                    new MenuItem(" +45", new EventHandler((o,e) => { GC.A=(GC.A + 45.0f) % 360.0f; ctrl.Refresh(); })),
-                    new MenuItem(" +90", new EventHandler((o,e) => { GC.A=(GC.A + 90.0f) % 360.0f; ctrl.Refresh(); })),
-                    new MenuItem("+180", new EventHandler((o,e) => { GC.A=(GC.A + 180.0f) % 360.0f; ctrl.Refresh(); }))*/
                     new MenuItem("-135", new EventHandler((o,e) => { GC.A=(360.0f-135.0f); ctrl.Refresh(); })),
                     new MenuItem(" -90", new EventHandler((o,e) => { GC.A=(360.0f-90.0f); ctrl.Refresh(); })),
                     new MenuItem(" -45", new EventHandler((o,e) => { GC.A=(360.0f-45.0f); ctrl.Refresh(); })),
@@ -465,7 +466,7 @@ namespace ModuleBOARD.Elements.Base
                     new MenuItem("+135", new EventHandler((o,e) => { GC.A=(135); ctrl.Refresh(); })),
                     new MenuItem("+180", new EventHandler((o,e) => { GC.A=(180.0f); ctrl.Refresh(); }))
                 });
-            }
+            }*/
 
             MenuItem[] metat = new MenuItem[libellé_état.Length];
             for (int i = 0; i < libellé_état.Length; ++i)

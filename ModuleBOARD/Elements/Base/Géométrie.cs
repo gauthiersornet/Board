@@ -112,6 +112,76 @@ namespace ModuleBOARD.Elements.Base
             else return default;
         }
 
+        public void Projection(GeoCoord2D dans_geoc)
+        {
+            P.X -= dans_geoc.P.X;
+            P.Y -= dans_geoc.P.Y;
+            if (dans_geoc.A != 0.0f)
+            {
+                Matrix m = new Matrix();
+                m.Rotate(dans_geoc.A);
+                P = new PointF
+                    (
+                        P.X * m.Elements[0] + P.Y * m.Elements[1],
+                        P.X * m.Elements[2] + P.Y * m.Elements[3]
+                    );
+                A -= dans_geoc.A;
+                while (A < 0.0f) A += 360.0f;
+                A %= 360.0f;
+            }
+        }
+
+        public void ProjectionInv(GeoCoord2D depuis_geoc)
+        {
+            if (depuis_geoc.A != 0.0f)
+            {
+                Matrix m = new Matrix();
+                m.Rotate(-depuis_geoc.A);
+                P = new PointF
+                    (
+                        P.X * m.Elements[0] + P.Y * m.Elements[1],
+                        P.X * m.Elements[2] + P.Y * m.Elements[3]
+                    );
+                A += depuis_geoc.A;
+                while (A < 0.0f) A += 360.0f;
+                A %= 360.0f;
+            }
+            P.X += depuis_geoc.P.X;
+            P.Y += depuis_geoc.P.Y;
+        }
+
+        /// <summary>
+        /// Permet de changer l'angle de l'objet en considérant un point de rotation 
+        /// </summary>
+        public void ChangerAngleSuivantPoint(float nAngle, PointF rotPt)
+        {
+            if(nAngle != A) ChangerDeltaAngleSuivantPoint((nAngle - A), rotPt);
+        }
+
+        public void ChangerDeltaAngleSuivantPoint(float delta, PointF rotPt)
+        {
+            if (delta != 0.0f)
+            {
+                double cosa = Math.Cos((delta * Math.PI) / 180.0);
+                double sina = Math.Sin((delta * Math.PI) / 180.0);
+                PointF dltp = new PointF(rotPt.X - P.X, rotPt.Y - P.Y);
+                PointF rdltp = new PointF(
+                        (float)(dltp.X * cosa - dltp.Y * sina),
+                        (float)(dltp.X * sina + dltp.Y * cosa)
+                    );
+                P.X += dltp.X - rdltp.X;
+                P.Y += dltp.Y - rdltp.Y;
+                A += delta;
+            }
+        }
+
+        public void ChangerDeltaAngleAimantSuivantPoint(float delta, PointF rotPt)
+        {
+            float oldA = A;
+            float newA = oldA + delta;
+            ChangerAngleSuivantPoint(GeoCoord2D.AngleFromToAimant45(oldA, newA), rotPt);
+        }
+
         static public bool EstDansIntervalStricte(int c, int iA, int iB)
         {
             int a = Math.Min(iA, iB);
@@ -125,6 +195,24 @@ namespace ModuleBOARD.Elements.Base
             int b = Math.Max(angFrom, angTo);
 
             for (int ang = -360; ang <= 360; ang += 45)
+                if (a < ang && ang < b)
+                {
+                    ang %= 360;
+                    if (ang < 0) ang = 360 + ang;
+                    return ang;
+                }
+
+            angTo %= 360;
+            if (angTo < 0) angTo = 360 + angTo;
+            return angTo;
+        }
+
+        static public float AngleFromToAimant45(float angFrom, float angTo)
+        {
+            float a = Math.Min(angFrom, angTo);
+            float b = Math.Max(angFrom, angTo);
+
+            for (float ang = -360.0f; ang <= 360.0f; ang += 45.0f)
                 if (a < ang && ang < b)
                 {
                     ang %= 360;
