@@ -1,5 +1,6 @@
 ﻿using ModuleBOARD.Elements.Base;
 using ModuleBOARD.Elements.Lots;
+using ModuleBOARD.Elements.Lots.Dés;
 using ModuleBOARD.Elements.Lots.Piles;
 using ModuleBOARD.Elements.Pieces;
 using System;
@@ -38,9 +39,11 @@ namespace ModuleBOARD.Réseau
         Pile = 7,
         Pioche = 8,
         Défausse = 9,
+        Dés = 10,
 
         Joueur = 20,
-        ElémentRéseau = 21
+        ParAVent = 21,
+        ElémentRéseau = 22,
     }
 
     public interface IBinSerialisable
@@ -68,11 +71,18 @@ namespace ModuleBOARD.Réseau
 
         public const int NB_OCTET_COMMANDE = 1;
 
+        public const int TAILLE_MAX_MESSAGE = 1024;
+
         static public bool EstChaineSecurisée(this string str)
         {
             return str.All(c => char.IsSeparator(c) ||
                                 char.IsPunctuation(c) ||
                                 char.IsLetterOrDigit(c));
+        }
+
+        static public bool EstMessageSecurisée(this string str)
+        {
+            return true;
         }
 
         static public bool IdRéseauVacant(this int IdentifiantRéseau, int gidr)
@@ -187,7 +197,8 @@ namespace ModuleBOARD.Réseau
                 if ((bInt[bInt.Length - 1] & 0x80) != 0)
                 {
                     byte[] ncode = new byte[bInt.Length + 1];
-                    Array.Copy(bInt, ncode, bInt.Length);
+                    //Array.Copy(bInt, ncode, bInt.Length);
+                    Buffer.BlockCopy(bInt, 0, ncode, 0, bInt.Length);
                     bInt = ncode;
                 }
                 return new BigInteger(bInt);
@@ -207,7 +218,8 @@ namespace ModuleBOARD.Réseau
             BigInteger bintRes = FastPowMod(bintGuid, bintCode, Prime256Bits);
             byte[] rBytes = bintRes.ToByteArray();
             byte[] rBytes16 = new byte[16];
-            Array.Copy(rBytes, rBytes16, Math.Min(rBytes.Length, rBytes16.Length));
+            //Array.Copy(rBytes, rBytes16, Math.Min(rBytes.Length, rBytes16.Length));
+            Buffer.BlockCopy(rBytes, 0, rBytes16, 0, Math.Min(rBytes.Length, rBytes16.Length));
             return new Guid(rBytes16);
         }
 
@@ -215,7 +227,8 @@ namespace ModuleBOARD.Réseau
         {
             byte[] sb = UTF8Encoding.UTF8.GetBytes(s);
             byte[] res = new byte[sb.Length + 1];
-            Array.Copy(sb, 0, res, 0, sb.Length);
+            //Array.Copy(sb, 0, res, 0, sb.Length);
+            Buffer.BlockCopy(sb, 0, res, 0, sb.Length);
             res[res.Length - 1] = 0;
             return res;
         }
@@ -239,7 +252,8 @@ namespace ModuleBOARD.Réseau
             return nb;*/
             int len = data.Length;
             Array.Resize(ref data, len + 1);
-            Array.Copy(data, 0, data, 1, len);
+            //Array.Copy(data, 0, data, 1, len);
+            Buffer.BlockCopy(data, 0, data, 1, len);
             data[0] = cmd;
             return data;
         }
@@ -254,7 +268,8 @@ namespace ModuleBOARD.Réseau
             /*byte[] nb = new byte[len];
             Array.Copy(bts, idx, nb, 0, len);
             return nb;*/
-            Array.Copy(bts, idx, bts, 0, len);
+            //Array.Copy(bts, idx, bts, 0, len);
+            Buffer.BlockCopy(bts, idx, bts, 0, len);
             Array.Resize(ref bts, len);
             return bts;
         }
@@ -270,7 +285,7 @@ namespace ModuleBOARD.Réseau
             int la = (a?.Length ?? 0);
             int lb = (b?.Length ?? 0);
             Array.Resize(ref a, la + lb);
-            if (lb > 0) Array.Copy(b, 0, a, la, lb);
+            if (lb > 0) Buffer.BlockCopy(b, 0, a, la, lb); //Array.Copy(b, 0, a, la, lb);
             return a;
         }
 
@@ -304,7 +319,7 @@ namespace ModuleBOARD.Réseau
             int la = (a?.Length ?? 0);
             int lb = Math.Min(len, b.Length - idx);
             Array.Resize(ref a, la + lb);
-            if(lb > 0) Array.Copy(b, idx, a, la, lb);
+            if(lb > 0) Buffer.BlockCopy(b, idx, a, la, lb); //Array.Copy(b, idx, a, la, lb);
             return a;
         }
 
@@ -583,6 +598,8 @@ namespace ModuleBOARD.Réseau
                     buff = BitConverter.GetBytes((Int64)o);
                 else if (o is Int32)
                     buff = BitConverter.GetBytes((Int32)o);
+                else if(o is Color)
+                    buff = BitConverter.GetBytes((Int32)(((Color)o).ToArgb()));
                 else if (o is Int16)
                     buff = BitConverter.GetBytes((Int16)o);
                 else if (o is UInt64)
@@ -732,10 +749,10 @@ namespace ModuleBOARD.Réseau
                 }
                 throw new NotImplementedException("Le type " + type + " n'est pas pris en cahrge.");
             }
-            else return stream.ReadObject(type);
+            else return stream.DésérialiserObject(type);
         }
 
-        static public object ReadObject(this Stream stream, Type type)
+        static public object DésérialiserObject(this Stream stream, Type type)
         {
             if (type == null) return null;
             else if (type.IsArray)
@@ -748,7 +765,7 @@ namespace ModuleBOARD.Réseau
 
                 for (ushort i = 0; i < nbItm; ++i)
                 {
-                    object o = ReadObject(stream, atype);
+                    object o = DésérialiserObject(stream, atype);
                     (tab as Array).SetValue(o, i);
                 }
                 return tab;
@@ -762,7 +779,7 @@ namespace ModuleBOARD.Réseau
                     object lst = type.GetConstructor(new Type[0]).Invoke(new object[0]);
                     object[] prms = new object[1];
                     MethodInfo metAdd = type.GetMethod("Add");
-                    for (object obj = ReadObject(stream, atype); obj != null; obj = ReadObject(stream, atype))
+                    for (object obj = DésérialiserObject(stream, atype); obj != null; obj = DésérialiserObject(stream, atype))
                     {
                         prms[0] = obj;
                         metAdd.Invoke(lst, prms);
@@ -782,7 +799,7 @@ namespace ModuleBOARD.Réseau
                 }
                 else if (type.IsEnum)
                 {
-                    object obj = stream.ReadObject(Enum.GetUnderlyingType(type));
+                    object obj = stream.DésérialiserObject(Enum.GetUnderlyingType(type));
                     return Enum.ToObject(type, obj);
                 }
                 else if (type == typeof(GeoCoord2D))
@@ -795,6 +812,8 @@ namespace ModuleBOARD.Réseau
                     return BitConverter.ToInt64(stream.GetBytes(8), 0);
                 else if (type == typeof(Int32))
                     return BitConverter.ToInt32(stream.GetBytes(4), 0);
+                else if (type == typeof(Color))
+                    return Color.FromArgb(BitConverter.ToInt32(stream.GetBytes(4), 0));
                 else if (type == typeof(Int16))
                     return BitConverter.ToInt16(stream.GetBytes(2), 0);
                 else if (type == typeof(UInt64))
@@ -806,7 +825,7 @@ namespace ModuleBOARD.Réseau
                 else if (type == typeof(Char))
                     return BitConverter.ToChar(stream.GetBytes(2), 0);
                 else if (type == typeof(Byte))
-                    return stream.ReadByte();
+                    return (byte)stream.ReadByte();
                 else if (type == typeof(SByte))
                     return (SByte)stream.ReadByte();
                 else if (type == typeof(Boolean))
@@ -908,7 +927,7 @@ namespace ModuleBOARD.Réseau
             typeof(Pile),
             typeof(Pioche),
             typeof(Défausse), //9
-            null,
+            typeof(Dés),
             null,
             null,
             null,
@@ -919,7 +938,8 @@ namespace ModuleBOARD.Réseau
             null,
             null,
             typeof(Joueur), //20
-            typeof(ElementRéseau) //21
+            typeof(ParAVent),
+            typeof(ElementRéseau) //22
         };
     }
 }

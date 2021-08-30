@@ -25,12 +25,17 @@ namespace ModuleBOARD.Réseau
 
             MessageServeur = 2, //bool ok, Nom de la session
             ActualiserSessions = 3, //Nom des la sessions
-            RejointSession = 4,
-            SynchroSession = 5, //Sérialisation intégrale du groupe racine
-            RéidentifierElément = 6,
-            ArrivéeJoueur = 7,
-            SortieJoueur = 8,
-
+            ReçoisListeGJoueur = 4,
+            RejointSession = 5,
+            SynchroSession = 6, //Sérialisation intégrale du groupe racine
+            RéidentifierElément = 7,
+            ArrivéeJoueur = 8,
+            SortieJoueur = 9,
+            MessageGénéral = 10,
+            MessageSession = 11,
+            MajDroitsSession = 12,
+            MajDroitsJoueur = 13,
+            //PasserMainJoueur = 14,
 
             DemandeElement = 15,
             RéceptionElement = 16,
@@ -41,23 +46,27 @@ namespace ModuleBOARD.Réseau
 
             ChargerElement = 21,
             ChangerEtatElément = 22,
-            RouletteElément = 23,
-            TournerElément = 24,
+            ChangerAngle = 23,
+            RouletteElément = 24,
+            TournerElément = 25,
 
-            AttraperElement = 25, // On reçoi un élément déjà en jeu
-            PiocherElement = 26, // On pioche un nouvelle élément
-            LacherElement = 27, // On lache un élément sur un autre
+            AttraperElement = 26, // On reçoi un élément déjà en jeu
+            PiocherElement = 27, // On pioche un nouvelle élément
+            LacherElement = 28, // On lache un élément sur un autre
+            TournerElémentAttrapé = 29,
 
-            RangerVersParent = 28,
-            Mélanger = 29,
-            DéfausserElement = 30,
-            ReMettreDansPioche = 31,
-            MettreEnPioche = 32,
-            CréerLaDéfausse = 33,
-            MettreEnPaquet = 34,
+            RangerVersParent = 30,
+            Mélanger = 31,
+            DéfausserElement = 32,
+            ReMettreDansPioche = 33,
+            MettreEnPioche = 34,
+            CréerLaDéfausse = 35,
+            MettreEnPaquet = 36,
 
-            Supprimer = 35,
-            SupprimerTout = 36
+            Supprimer = 37,
+            SupprimerTout = 38,
+
+            ChatAudio = 50
         }
 
         public enum ServeurCodeCommande : byte
@@ -67,11 +76,17 @@ namespace ModuleBOARD.Réseau
 
             CréerSession = 2,//Nom de la session à créer et autres paramètres
             ActualiserSessions = 3, //Vide
-            RejoindreSession = 4, //Mot de passe en sha256
-            SupprimerSession = 5, //Nom de la session, l'émétteur doit être le maître de session
-            QuitterSession = 6,
-            DemandeSynchro = 7,
-
+            ActualiserListeGJoueur = 4,
+            RejoindreSession = 5, //Mot de passe en sha256
+            SupprimerSession = 6, //Nom de la session, l'émétteur doit être le maître de session
+            QuitterSession = 7,
+            DemandeSynchro = 8,
+            //9
+            MessageGénéral = 10,
+            MessageSession = 11,
+            MajDroitsSession = 12,
+            MajDroitsJoueur = 13,
+            PasserMainJoueur = 14,
 
             DemandeElement = 15,
             RéceptionElement = 16,
@@ -82,23 +97,27 @@ namespace ModuleBOARD.Réseau
 
             ChargerElement = 21,
             ChangerEtatElément = 22,
-            RouletteElément = 23,
-            TournerElément = 24,
+            ChangerAngle = 23,
+            RouletteElément = 24,
+            TournerElément = 25,
 
-            AttraperElement = 25, // On prend celui que l'on a ciblé !
-            PiocherElement = 26, // On pioche celui que l'on a cible et donc si pile non vide alors bnouv element
-            LacherElement = 27, // On lache un élément sur un autre
+            AttraperElement = 26, // On prend celui que l'on a ciblé !
+            PiocherElement = 27, // On pioche celui que l'on a cible et donc si pile non vide alors bnouv element
+            LacherElement = 28, // On lache un élément sur un autre
+            TournerElémentAttrapé = 29,
 
-            RangerVersParent = 28,
-            Mélanger = 29,
-            DéfausserElement = 30,
-            ReMettreDansPioche = 31,
-            MettreEnPioche = 32,
-            CréerLaDéfausse = 33,
-            MettreEnPaquet = 34,
+            RangerVersParent = 30,
+            Mélanger = 31,
+            DéfausserElement = 32,
+            ReMettreDansPioche = 33,
+            MettreEnPioche = 34,
+            CréerLaDéfausse = 35,
+            MettreEnPaquet = 36,
 
-            Supprimer = 35,
-            SupprimerTout = 36
+            Supprimer = 37,
+            SupprimerTout = 38,
+
+            ChatAudio = 50
         }
 
         /*public enum EÉvènement : byte
@@ -128,6 +147,8 @@ namespace ModuleBOARD.Réseau
         static protected MethodInfo GetMethodInfo<T1, T2, T3, T4, T5>(Func<T1, T2, T3, T4, T5, bool> a) { return a.Method; }
         static protected MethodInfo GetMethodInfo<T1, T2, T3, T4, T5, T6>(Func<T1, T2, T3, T4, T5, T6, bool> a) { return a.Method; }
 
+        static protected MethodInfo GetMethodInfo<T1, T2, T3, T4, T5, T6, T7>(Func<T1, T2, T3, T4, T5, T6, T7, bool> a) { return a.Method; }
+
         /*static protected MethodInfo GetMethodInfo(Action a){return a.Method;}
         static protected MethodInfo GetMethodInfo<T1>(Action<T1> a) { return a.Method; }
         static protected MethodInfo GetMethodInfo<T1, T2>(Action<T1, T2> a) { return a.Method; }
@@ -137,7 +158,7 @@ namespace ModuleBOARD.Réseau
         static protected MethodInfo GetMethodInfo<T1, T2, T3, T4, T5, T6>(Action<T1, T2, T3, T4, T5, T6> a) { return a.Method; }*/
         #endregion GetMethodInfo
 
-        static public Guid GVersion { get => new Guid(new byte[16] { 87, 27, 212, 16, 206, 71, 96, 233, 94, 114, 195, 18, 167, 201, 150, 202 }); }
+        static public Guid GVersion { get => new Guid(new byte[16] { 187, 197, 212, 164, 206, 71, 96, 23, 94, 134, 195, 168, 147, 101, 150, 202 }); }
 
         private Random rnd = new Random();
 
@@ -158,7 +179,9 @@ namespace ModuleBOARD.Réseau
         protected MethodInfo[] méthodesRéseau;
 
         protected BibliothèqueImage bibImg;
+        protected SortedSet<string> ImagesDemandés;
         protected BibliothèqueModel bibMod;
+        protected SortedSet<string> modelsDemandés;
 
         protected Dictionary<int, IBinSerialisable> dicoElement = new Dictionary<int, IBinSerialisable>(); //indexer temporairement les éléments
 
@@ -172,6 +195,8 @@ namespace ModuleBOARD.Réseau
         {
             _tcpClient.ReceiveTimeout = 10000;
             _tcpClient.SendTimeout = 10000;
+            ImagesDemandés = null;
+            modelsDemandés = null;
             DateDernierFonctionnement = DateTime.Now;
             if (journal != null) Journal = journal;
             else Journal = new ConcurrentQueue<string>();
@@ -243,6 +268,21 @@ namespace ModuleBOARD.Réseau
 
         public bool EstConnecté { get => tcpClient != null && tcpClient.Connected; }
         public bool EstIdentifié { get => tcpClient != null && tcpClient.Connected && Identifiant != null; }
+
+        public bool AEnvoiEnCours { get => FileOrdres != null && !FileOrdres.IsEmpty; }
+        public bool AReceptionEnCours { get
+            {
+                TcpClient tcp = tcpClient;
+                if(tcp != null)
+                {
+                    try
+                    {
+                        return tcpClient.Available > 0;
+                    }
+                    catch { return false; }
+                }
+                else return false;
+            } }
 
         public BibliothèqueImage BibImage => bibImg;
         public BibliothèqueModel BibModel => bibMod;
@@ -430,7 +470,79 @@ namespace ModuleBOARD.Réseau
             return true;
         }*/
 
-        private byte[] writeBks = new byte[32 * 100];
+        private byte[][] writeBks = new byte[100][];
+        private byte[] block = new byte[32];
+
+        protected bool WriteQueue(int tailleMini = 5*1024)
+        {
+            while (FileOrdres.IsEmpty == false)
+            {
+                int nbBuff = 0;
+                int tailleTotal;
+                byte[] bts;
+
+                for (tailleTotal = 0; tailleTotal < tailleMini && nbBuff < writeBks.Length && FileOrdres.TryDequeue(out bts); tailleTotal += ((bts.Length+30)/31) * 32 )
+                {
+                    if(bts.Length > 0) writeBks[nbBuff++] = bts;
+                }
+
+                if(nbBuff > 0)
+                {
+                    int odx = 0;
+                    byte[] outBuff = new byte[tailleTotal];
+                    for(int bi = 0; bi < nbBuff; ++bi)
+                    {
+                        bts = writeBks[bi];
+
+                        int nbFBk = ((bts.Length-1) / 31) * 31;
+                        for (int i = 0; i < nbFBk; i+=31, odx+=32)
+                        {
+                            //Array.Copy(bts, i, block, 0, 31);
+                            Buffer.BlockCopy(bts, i, block, 0, 31);
+
+                            //block[31] = CalculerCheckCode31(block, ((bksIdx+32) == writeBks.Length));
+                            block[31] = (byte)(rnd.Next(0b00100000) | 0b00100000);
+                            //if ((i + nbBytes) == bts.Length) block[31] |= 0b01000000;// si on est au dernier block, stop bit à 1
+
+                            BigInteger bint = chiffrer256(new BigInteger(block));
+                            byte[] bintB = bint.ToByteArray();
+                            Buffer.BlockCopy(bintB, 0, outBuff, odx, Math.Min(bintB.Length, 32));
+                        }
+
+                        int nbByte = bts.Length - nbFBk;
+                        if(nbByte < 31)
+                        {
+                            Buffer.BlockCopy(bts, nbFBk, block, 0, nbByte);
+                            Array.Clear(block, nbByte, 31 - nbByte);
+
+                            //block[31] = CalculerCheckCode31(block, ((bksIdx+32) == writeBks.Length));
+                            block[31] = (byte)(nbByte | 0b01000000);// si on est au dernier block, stop bit à 1
+
+                            BigInteger bint = chiffrer256(new BigInteger(block));
+                            byte[] bintB = bint.ToByteArray();
+                            Buffer.BlockCopy(bintB, 0, outBuff, odx, Math.Min(bintB.Length, 32));
+                        }
+                        else
+                        {
+                            Buffer.BlockCopy(bts, nbFBk, block, 0, 31);
+
+                            //block[31] = CalculerCheckCode31(block, ((bksIdx+32) == writeBks.Length));
+                            block[31] = (byte)(rnd.Next(0b00100000) | 0b01100000);// si on est au dernier block, stop bit à 1
+
+                            BigInteger bint = chiffrer256(new BigInteger(block));
+                            byte[] bintB = bint.ToByteArray();
+                            Buffer.BlockCopy(bintB, 0, outBuff, odx, Math.Min(bintB.Length, 32));
+                        }
+                        odx += 32;
+                    }
+                    stream.Write(outBuff, 0, outBuff.Length);
+                }
+            }
+            stream.Flush();
+            return true;
+        }
+
+        /*private byte[] writeBks = new byte[32 * 100];
         protected bool WriteQueue(int limit = 1)
         {
             if (FileOrdres.IsEmpty == false)
@@ -543,7 +655,7 @@ namespace ModuleBOARD.Réseau
                 stream.Flush();
             }
             return true;
-        }
+        }*/
 
         protected int WriteChiffrer256(byte[] m, int nbBlock = -1)
         {
@@ -831,6 +943,8 @@ namespace ModuleBOARD.Réseau
             }
         }
 
+        abstract protected bool GérerException(Exception exp);
+
         protected void fonctionnement()
         {
             try
@@ -861,13 +975,23 @@ namespace ModuleBOARD.Réseau
                                             object[] prms = fluxEntrant.DécodeCommande(this, mets[cmd].GetParameters());
                                             //VérifierLesEléments();
                                             dicoElement.Clear();
-                                            if (false.Equals(mets[cmd].Invoke(this, prms)))
+                                            try
                                             {
-                                                Close();
-                                                fonctionne = false;
-                                                return;
+                                                if (false.Equals(mets[cmd].Invoke(this, prms)))
+                                                {
+                                                    /*Close();
+                                                    fonctionne = false;
+                                                    return;*/
+                                                    GérerException(null);
+                                                }
                                             }
-                                            else DateDernierFonctionnement = DateTime.Now;
+                                            catch(Exception ex)
+                                            {
+                                                Journaliser("ex = " + ex);
+                                                if (!GérerException(null))
+                                                    throw ex;
+                                            }
+                                            DateDernierFonctionnement = DateTime.Now;
                                         }
                                         else
                                         {
@@ -879,10 +1003,10 @@ namespace ModuleBOARD.Réseau
                                 }
                             }
 
-                            WriteQueue();
+                            /*while(FileOrdres.IsEmpty == false)*/ WriteQueue();
 
-                            //Attente de 20 ms
-                            Thread.Sleep(20);
+                            //Attente de 10 ms
+                            Thread.Sleep(10);
                         }
                     }
                 }
@@ -1386,22 +1510,32 @@ namespace ModuleBOARD.Réseau
 
         protected void VérifierBibliothèqueImages()
         {
-            List<string> req = bibImg.ImageInconnues;
-            if (req != null && req.Any()) WriteCommande(ServeurCodeCommande.DemandeImage, req);
+            SortedSet<string> req = bibImg.ImageInconnues;
+            if (req != null && req.Any())
+            {
+                if (ImagesDemandés != null) req.RemoveWhere(s => ImagesDemandés.Contains(s));
+                else ImagesDemandés = new SortedSet<string>();
+                foreach (string s in req) ImagesDemandés.Add(s);
+                if (req.Any()) WriteCommande(ServeurCodeCommande.DemandeImage, req.ToList());
+            }
         }
 
         protected void VérifierBibliothèqueModels()
         {
-            List<string> req = BibModel.ModelInconnues;
-            if (req != null && req.Any()) WriteCommande(ServeurCodeCommande.DemandeModel, req);
+            SortedSet<string> req = BibModel.ModelInconnues;
+            if (req != null && req.Any())
+            {
+                if (modelsDemandés != null) req.RemoveWhere(s => modelsDemandés.Contains(s));
+                else modelsDemandés = new SortedSet<string>();
+                foreach (string s in req) modelsDemandés.Add(s);
+                if (req.Any()) WriteCommande(ServeurCodeCommande.DemandeModel, req.ToList());
+            }
         }
 
         protected void VérifierLesBibliothèques()
         {
-            List<string> req = BibModel.ModelInconnues;
-            if (req != null && req.Any()) WriteCommande(ServeurCodeCommande.DemandeModel, req);
-            req = bibImg.ImageInconnues;
-            if (req != null && req.Any()) WriteCommande(ServeurCodeCommande.DemandeImage, req);
+            VérifierBibliothèqueModels();
+            VérifierBibliothèqueImages();
         }
     }
 }
