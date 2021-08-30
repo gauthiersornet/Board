@@ -389,8 +389,14 @@ namespace ModuleBOARD.Elements.Lots.Piles
 
         public override (Element, Element) MousePickAvecContAt(PointF mp, float angle, EPickUpAction action = 0)
         {
-            if (action.HasFlag(EPickUpAction.Déplacer) && Images != null && Images.Count > 0)
-                action &= ~EPickUpAction.Déplacer;
+            if (action.HasFlag(EPickUpAction.Attraper))
+            {
+                action |= EPickUpAction.Piocher;
+            }
+            else if (action.HasFlag(EPickUpAction.Piocher) && Images != null && Images.Count > 0)
+            {
+                action &= ~EPickUpAction.Piocher;
+            }
             return base.MousePickAvecContAt(mp, angle, action);
         }
 

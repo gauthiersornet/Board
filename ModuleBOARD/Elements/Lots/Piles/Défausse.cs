@@ -17,7 +17,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
         public override EType ElmType { get => EType.Défausse; }
 
         public Pioche Pioche = null;
-        private Dictionary<KeyValuePair<Image, Image>, Pioche> dicoParents = null;
+        //private Dictionary<KeyValuePair<Image, Image>, Pioche> dicoParents = null;
 
         Défausse() { }
 
@@ -50,8 +50,8 @@ namespace ModuleBOARD.Elements.Lots.Piles
             : base(elm)
         {
             Pioche = elm.Pioche;
-            if (elm.dicoParents != null) dicoParents = new Dictionary<KeyValuePair<Image, Image>, Pioche>(elm.dicoParents);
-            else dicoParents = null;
+            /*if (elm.dicoParents != null) dicoParents = new Dictionary<KeyValuePair<Image, Image>, Pioche>(elm.dicoParents);
+            else dicoParents = null;*/
         }
 
         public Défausse(string path, XmlNode paq, PointF p, BibliothèqueImage bibliothèqueImage)
@@ -74,7 +74,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
                 Images = null;
                 Pioche.AddRange(imgs);
             }
-            else if (dicoParents != null)
+            /*else if (dicoParents != null)
             {
                 for(int i = 0;i < Images.Count; ++i)
                 {
@@ -91,14 +91,14 @@ namespace ModuleBOARD.Elements.Lots.Piles
                 Images = Images.Where(img => (img.Key != null || img.Value != null)).ToList();
                 if (Images.Any() == false) Images = null;
                 dicoParents = null;
-            }
+            }*/
         }
 
         override public ContextMenu Menu(IBoard ctrl)
         {
             ContextMenu cm = base.Menu(ctrl);
             if (cm == null) cm = new ContextMenu();
-            if(Pioche!=null || dicoParents != null)
+            if(Pioche!=null /*|| dicoParents != null*/)
                 cm.MenuItems.Add("Remettre dans la pioche", new EventHandler((o, e) => { ctrl.ReMettreDansPioche(this); }));
             return cm;
         }
@@ -106,13 +106,13 @@ namespace ModuleBOARD.Elements.Lots.Piles
         public override Element ElementLaché(Element elm)
         {
             Element res = base.ElementLaché(elm);
-            if (res == null && Pioche == null && elm is Element2D && elm.Parent is Pioche)
+            /*if (res == null && Pioche == null && elm is Element2D && elm.Parent is Pioche)
             {
                 if (dicoParents == null) dicoParents = new Dictionary<KeyValuePair<Image, Image>, Pioche>();
                 if(elm is Element2D2F)
                     dicoParents.Add(new KeyValuePair<Image, Image>((elm as Element2D2F).Dos, (elm as Element2D).ElmImage), elm.Parent as Pioche);
                 else dicoParents.Add(new KeyValuePair<Image, Image>((elm as Element2D).ElmImage, (elm as Element2D).ElmImage), elm.Parent as Pioche);
-            }
+            }*/
             return res;
         }
 
@@ -124,7 +124,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
             if (elm != null)
             {
                 if (Pioche != null) elm.Parent = Pioche;
-                if (dicoParents != null && elm is Element2D2F)
+                /*if (dicoParents != null && elm is Element2D2F)
                 {
                     //Element2D2F elm2D2F = elm as Element2D2F;
                     Element2D2F elm2D2F = elm as Element2D2F;
@@ -136,7 +136,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
                         if (Images == null || Images.Contains(kv) == false)
                             dicoParents.Remove(kv);
                     }
-                }
+                }*/
             }
             return elm;
         }
@@ -158,7 +158,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
         public void SuppressionPioche(Pioche p)
         {
             if (Pioche == p) Pioche = null;
-            if(dicoParents!=null)
+            /*if(dicoParents!=null)
             {
                 bool still;
                 do
@@ -175,7 +175,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
                     }
                 } while (still);
                 if (dicoParents.Any() == false) dicoParents = null;
-            }
+            }*/
         }
 
         public override Element Suppression(Element elm)
@@ -187,11 +187,11 @@ namespace ModuleBOARD.Elements.Lots.Piles
                     Pioche.SuppressionDéfausse(this);
                     Pioche = null;
                 }
-                if(dicoParents != null)
+                /*if(dicoParents != null)
                 {
                     foreach (var kv in dicoParents) kv.Value.SuppressionDéfausse(this);
                     dicoParents = null;
-                }
+                }*/
                 return this;
             }
             else
@@ -200,7 +200,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
                 {
                     if (Pioche == elm && (Images == null || Images.Any() == false))
                         return this;
-                    else if(dicoParents != null)
+                    /*else if(dicoParents != null)
                     {
                         bool still;
                         do
@@ -217,7 +217,7 @@ namespace ModuleBOARD.Elements.Lots.Piles
                             }
                         } while (still);
                         if (dicoParents.Any() == false) dicoParents = null;
-                    }
+                    }*/
                 }
                 return base.Suppression(elm);
             }
