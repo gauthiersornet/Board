@@ -202,15 +202,22 @@ namespace ModuleBOARD.Elements.Pieces
             return (this == elm);
         }
 
-        public override bool Roulette(int delta)
+        /*public override bool Roulette(int delta)
         {
-            int ia = (int)(((GC.A % 360.0f) / 45.0f) + 0.5f);
 
-            if (delta > 0) ia = (ia + delta) % 8;
-            else if(delta < 0) ia = (ia + (1 - 8) * delta) % 8;
+        }*/
 
-            GC.A = 45.0f * ia;
-            return true;
+        public override void Tourner(int delta)
+        {
+            if (EstDansEtat(EEtat.RotationFixe) == false)
+            {
+                int ia = (int)(((GC.A % 360.0f) / 45.0f) + 0.5f);
+
+                if (delta > 0) ia = (ia + 1) % 8;
+                else if (delta < 0) ia = (ia + (8 - 1)) % 8;
+
+                GC.A = 45.0f * ia;
+            }
         }
 
         public override (Element, Element) MousePickAvecContAt(PointF mp, float angle, EPickUpAction action)
