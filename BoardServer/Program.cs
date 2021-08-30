@@ -15,9 +15,19 @@ namespace BoardServer
     {
         static void Main(string[] args)
         {
-            //new BoardSession("Kosmopolite", null, OutilsRéseau.BIntHashPassword256(""), OutilsRéseau.BIntHashPassword256(""), false);
-            new BoardSession("GameOver", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false);
-            new BoardSession("Virus", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false);
+            //new BoardSession("Kosmopolite", null, OutilsRéseau.BIntHashPassword256(""), OutilsRéseau.BIntHashPassword256(""), false, Joueur.EDroits.ToutLesDroits);
+            new BoardSession("GameOver", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false, "Speex Narrow Band", Joueur.EDroits.ToutLesDroits);
+            new BoardSession("Virus", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false, "Speex Narrow Band", Joueur.EDroits.ToutLesDroits);
+            new BoardSession("Krash", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false, "Speex Narrow Band", Joueur.EDroits.ToutLesDroits);
+            new BoardSession("Oh my goods", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false, "Speex Narrow Band", Joueur.EDroits.ToutLesDroits);
+            new BoardSession("L'expédition perdue", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false, "Speex Narrow Band", Joueur.EDroits.ToutLesDroits);
+            new BoardSession("Lâche pas la savonnette", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false, "Speex Narrow Band", Joueur.EDroits.ToutLesDroits);
+            new BoardSession("Wizard Extreme", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false, "Speex Narrow Band", Joueur.EDroits.ToutLesDroits);
+            new BoardSession("Spynet", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false, "Speex Narrow Band", Joueur.EDroits.ToutLesDroits);
+            new BoardSession("Donjons & Trésors", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false, "Speex Narrow Band", Joueur.EDroits.ToutLesDroits);
+            new BoardSession("Poker des cafards", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false, "Speex Narrow Band", Joueur.EDroits.ToutLesDroits);
+            new BoardSession("Fluxx Cthulhu", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false, "Speex Narrow Band", Joueur.EDroits.ToutLesDroits);
+            new BoardSession("Héros de Terrinoth", null, OutilsRéseau.BIntHashPassword256("g861"), OutilsRéseau.BIntHashPassword256(""), false, "Speex Narrow Band", Joueur.EDroits.ToutLesDroits);
 
             Int32 port;
             string sPort = args.FirstOrDefault(s => s.StartsWith("port="));
@@ -27,6 +37,10 @@ namespace BoardServer
             string ipAdresse = args.FirstOrDefault(s => s.StartsWith("ip="));
             if (ipAdresse != null) ipAdresse = ipAdresse.Substring("ip=".Length).Trim();
             else ipAdresse = "127.0.0.1";
+
+            string limitsession = args.FirstOrDefault(s => s.StartsWith("limitsession="));
+            if (limitsession != null) BoardSession.NbSessionMax = Int32.Parse(limitsession.Substring("limitsession=".Length).Trim());
+            else BoardSession.NbSessionMax = 20;
 
             BigInteger hashpwd; ;
             string mdp = args.FirstOrDefault(s => s.StartsWith("mdp="));
@@ -38,19 +52,20 @@ namespace BoardServer
             TimeSpan délaisFonctionnement = new TimeSpan(1, 0, 0);
 
             TcpListener server = null;
-            try
+
+            IPAddress localAddr = IPAddress.Parse(ipAdresse);
+            server = new TcpListener(localAddr, port);
+
+            // Lancer l'écoute
+            server.Start();
+            Console.Write("En attente de connexion... ");
+
+            int nbClient = 0;
+
+            // Boucle d'écoute.
+            while (true)
             {
-                IPAddress localAddr = IPAddress.Parse(ipAdresse);
-                server = new TcpListener(localAddr, port);
-
-                // Lancer l'écoute
-                server.Start();
-                Console.Write("En attente de connexion... ");
-
-                int nbClient = 0;
-
-                // Boucle d'écoute.
-                while (true)
+                try
                 {
                     if (server.Pending())
                     {
@@ -72,60 +87,78 @@ namespace BoardServer
                     string str;
                     if (Message.TryDequeue(out str))Console.WriteLine(str);
 
-                    lock (ClientThreadServer.lstClientThread)
                     {
                         List<ClientThreadServer> clientOutLst = null;
-                        foreach(var clt in ClientThreadServer.lstClientThread)
+                        lock (ClientThreadServer.lstClientThread)
                         {
-                            if(clt.EstIdentifié)
+                            foreach (var clt in ClientThreadServer.lstClientThread)
                             {
-                                if(TimeSpan.Compare(DateTime.Now - clt.DateDernierFonctionnement, délaisFonctionnement) > 0)
+                                if (clt.EstIdentifié)
+                                {
+                                    if (TimeSpan.Compare(DateTime.Now - clt.DateDernierFonctionnement, délaisFonctionnement) > 0)
+                                    {
+                                        if (clientOutLst == null) clientOutLst = new List<ClientThreadServer>();
+                                        clientOutLst.Add(clt);
+                                        try { clt.Close(); } catch { }
+                                    }
+                                }
+                                else if (clt.EstConnecté)
+                                {
+                                    if (TimeSpan.Compare(DateTime.Now - clt.DateDernierFonctionnement, délaisIdentification) > 0)
+                                    {
+                                        if (clientOutLst == null) clientOutLst = new List<ClientThreadServer>();
+                                        clientOutLst.Add(clt);
+                                        try { clt.Close(); } catch { }
+                                    }
+                                }
+                                else
                                 {
                                     if (clientOutLst == null) clientOutLst = new List<ClientThreadServer>();
                                     clientOutLst.Add(clt);
-                                    try { clt.Close(); } catch { }
                                 }
                             }
-                            else if(clt.EstConnecté)
+
+                            if (clientOutLst != null)
                             {
-                                if (TimeSpan.Compare(DateTime.Now - clt.DateDernierFonctionnement, délaisIdentification) > 0)
+                                foreach (ClientThreadServer clt in clientOutLst)
                                 {
-                                    if (clientOutLst == null) clientOutLst = new List<ClientThreadServer>();
-                                    clientOutLst.Add(clt);
-                                    try { clt.Close(); } catch { }
+                                    ClientThreadServer.lstClientThread.Remove(clt);
+                                    try { clt.SafeStop(0); } catch { }
                                 }
                             }
-                            else
+
+                            if (ClientThreadServer.lstClientThread.Count != nbClient)
                             {
-                                if (clientOutLst == null) clientOutLst = new List<ClientThreadServer>();
-                                clientOutLst.Add(clt);
+                                nbClient = ClientThreadServer.lstClientThread.Count;
+                                Console.WriteLine("Il reste " + nbClient + " clients connectés.");
                             }
                         }
 
                         if (clientOutLst != null)
                         {
-                            foreach(ClientThreadServer clt in clientOutLst)
+                            foreach (ClientThreadServer clt in clientOutLst)
                             {
-                                ClientThreadServer.lstClientThread.Remove(clt);
-                                if (!clt.SafeStop()) clt.Abort();
+                                bool bAbord = false;
+                                try { bAbord = clt.SafeStop(); } catch { }
+                                if (bAbord == false) try { clt.Abort(); } catch { }
                             }
-                        }
-
-                        if (ClientThreadServer.lstClientThread.Count != nbClient)
-                        {
-                            nbClient = ClientThreadServer.lstClientThread.Count;
-                            Console.WriteLine("Il reste " + nbClient + " clients connectés.");
+                            clientOutLst.Clear();
+                            clientOutLst = null;
                         }
                     }
-
-                    System.Threading.Thread.Sleep(1000);
                 }
+                catch (SocketException e)
+                {
+                    Console.WriteLine("Connexion exception: {0}", e);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("Exception: {0}", e);
+                }
+
+                System.Threading.Thread.Sleep(1000);
             }
-            catch (SocketException e)
-            {
-                Console.WriteLine("Connexion exception: {0}", e);
-            }
-            finally
+            //finally
             {
                 // Arrête de l'écoute
                 server.Stop();

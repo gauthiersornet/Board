@@ -40,43 +40,60 @@ namespace BoardServer
             {
                 null,//0
                 GetMethodInfo(_ct.Déconnexion),//déconnexion
-                GetMethodInfo<string,BigInteger,BigInteger,bool>(_ct.créerSession),
+                GetMethodInfo<string,BigInteger,BigInteger,bool,string,Joueur.EDroits>(_ct.créerSession),
                 GetMethodInfo(_ct.EnvoyerSessions),
+                GetMethodInfo(_ct.ActualiserListeGJoueur),
                 GetMethodInfo<string, BigInteger>(_ct.RejoindreSession),
                 GetMethodInfo<string>(_ct.SupprimerSession),
                 GetMethodInfo(_ct.QuitterSession),
-                GetMethodInfo(_ct.DemandeSynchro),//7
+                GetMethodInfo(_ct.DemandeSynchro),//8
                 null,
-                null,
-                null,
-                null,//11
-                null,
-                null,
-                null,
+                GetMethodInfo<string>(_ct.MessageGénéral), //10
+                GetMethodInfo<string>(_ct.MessageSession), //11
+                GetMethodInfo<Joueur.EDroits>(_ct.MajDroitsSession),// = 12,
+                GetMethodInfo<ushort, Joueur.EDroits>(_ct.MajDroitsJoueur),// = 13,
+                GetMethodInfo<ushort>(_ct.PasseMainJoueur),// = 14,
+                
                 GetMethodInfo<List<int>>(_ct.DemandeElement),//15
                 GetMethodInfo<List<Element>>(_ct.RéceptionElement),
                 GetMethodInfo<List<string>>(_ct.DemandeImage),
                 GetMethodInfo<List<string>>(_ct.DemandeModel),
-                GetMethodInfo(_ct.RéceptionImage),
+                GetMethodInfo<byte,ushort,uint>(_ct.RéceptionImage),
                 GetMethodInfo(_ct.RéceptionModel),//20
                 GetMethodInfo<List<Element>>(_ct.ChargerElement),
                 GetMethodInfo<int, Element.EEtat>(_ct.ChangerEtatElément),
-                GetMethodInfo<int, int>(_ct.RouletteElément),
-                GetMethodInfo<int, int>(_ct.TournerElément),//24
-                GetMethodInfo<PointF, int, int>(_ct.AttraperElement), // On prend celui que l'on a ciblé !
-                GetMethodInfo<PointF, int, int>(_ct.PiocherElement), // On pioche celui que l'on a cible et donc si pile non vide alors bnouv element
+                GetMethodInfo<int, float>(_ct.ChangerAngle),
+                GetMethodInfo<int, int>(_ct.RouletteElément),//24
+                GetMethodInfo<int, int>(_ct.TournerElément),//25
+                GetMethodInfo<PointF, float, int, int>(_ct.AttraperElement), // On prend celui que l'on a ciblé !
+                GetMethodInfo<PointF, float, int, int>(_ct.PiocherElement), // On pioche celui que l'on a cible et donc si pile non vide alors bnouv element
                 GetMethodInfo<PointF, int>(_ct.LacherElement), // On lache tout les éléments sur un autre
+                GetMethodInfo<PointF, float>(_ct.TournerElémentAttrapé), //29 // On tourne tout les éléments attrapés
 
-                GetMethodInfo<int>(_ct.RangerVersParent),//28
-                GetMethodInfo<int>(_ct.Mélanger),//29
-                GetMethodInfo<int>(_ct.DéfausserElement),//30
-                GetMethodInfo<int>(_ct.ReMettreDansPioche),//31
+                GetMethodInfo<int>(_ct.RangerVersParent),//30
+                GetMethodInfo<int>(_ct.Mélanger),
+                GetMethodInfo<int>(_ct.DéfausserElement),
+                GetMethodInfo<int>(_ct.ReMettreDansPioche),//33
                 GetMethodInfo<int>(_ct.MettreEnPioche),
                 GetMethodInfo<int>(_ct.CréerLaDéfausse),
-                GetMethodInfo<int>(_ct.MettreEnPaquet),
+                GetMethodInfo<int>(_ct.MettreEnPaquet),//36
 
                 GetMethodInfo<int>(_ct.Supprimer),
-                GetMethodInfo(_ct.SupprimerTout)
+                GetMethodInfo(_ct.SupprimerTout),//38
+
+                null,
+                null,//40
+                null,
+                null,
+                null,
+                null,
+                null,//45
+                null,
+                null,
+                null,
+                null,
+
+                GetMethodInfo<ushort>(_ct.ChatAudio) //50
             };
         }
         static private readonly MethodInfo[] ServMethods = InitServMethods();
@@ -141,6 +158,17 @@ namespace BoardServer
             return Identifiant != "";
         }
 
+        protected override bool GérerException(Exception exp)
+        {
+            if(exp is IOException) return false;
+            else
+            {
+                BoardSession bs = sessionEnCours;
+                if (bs != null) return bs.SynchroniserTous(this);
+                else return false;
+            }
+        }
+
         #region Méthodes appelées via thread réseau
         public Element TrouverElementRéseau(int idRez)
         {
@@ -168,20 +196,29 @@ namespace BoardServer
                     byte[] bts = kv.Value.NomSession.stringToBytes();
                     if (WriteChiffrer256(BoardCodeCommande.AjouterSession, bts) < bts.Length) return false;
                 }*/
-                WriteCommande(BoardCodeCommande.ActualiserSessions, BoardSession.LstBoardSessions.Keys.ToArray());
+                WriteCommande(BoardCodeCommande.ActualiserSessions, BoardSession.LstBoardSessions.Keys.ToList());
             }
             return true;
         }
 
-        private bool créerSession(string nomSession, BigInteger hashPwdMaître, BigInteger hashPwdJoueur, bool prévenirMaître)
+        public bool ActualiserListeGJoueur()
+        {
+            lock (ClientThreadServer.lstClientThread)
+            {
+                WriteCommande(BoardCodeCommande.ReçoisListeGJoueur, ClientThreadServer.lstClientThread.Select(c => c.Identifiant).ToList());
+            }
+            return true;
+        }
+
+        private bool créerSession(string nomSession, BigInteger hashPwdMaître, BigInteger hashPwdJoueur, bool prévenirMaître, string chatCodec, Joueur.EDroits droits)
         {
             lock (BoardSession.LstBoardSessions)
             {
-                if (String.IsNullOrWhiteSpace(nomSession) || !OutilsRéseau.EstChaineSecurisée(nomSession) || BoardSession.LstBoardSessions.Count >= 10 || BoardSession.LstBoardSessions.ContainsKey(nomSession))
+                if (String.IsNullOrWhiteSpace(nomSession) || !OutilsRéseau.EstChaineSecurisée(nomSession) || BoardSession.LstBoardSessions.Count >= BoardSession.NbSessionMax || BoardSession.LstBoardSessions.ContainsKey(nomSession))
                     WriteCommande(BoardCodeCommande.MessageServeur, OutilsRéseau.EMessage.RefuSession, nomSession);
                 else
                 {
-                    new BoardSession(nomSession, this, hashPwdMaître, hashPwdJoueur, prévenirMaître);
+                    new BoardSession(nomSession, this, hashPwdMaître, hashPwdJoueur, prévenirMaître, chatCodec, droits);
                     WriteCommande(BoardCodeCommande.MessageServeur, OutilsRéseau.EMessage.CréaSession, nomSession);
                 }
             }
@@ -199,6 +236,8 @@ namespace BoardServer
             }
             if (bs != null)
             {
+                ImagesDemandés = null;
+                modelsDemandés = null;
                 if (bs.JointLaSession(this, hash))
                 {
                     bibImg = bs.bibliothèqueImage;
@@ -254,6 +293,54 @@ namespace BoardServer
             return true;
         }
 
+        private bool MessageGénéral(string message)
+        {
+            if (message != null && message.Length <= OutilsRéseau.TAILLE_MAX_MESSAGE && OutilsRéseau.EstMessageSecurisée(message))
+            {
+                lock (lstClientThread)
+                {
+                    byte[] commd = ConstruireCommande(BoardCodeCommande.MessageGénéral, Identifiant + " : " + message);
+                    lstClientThread.ForEach(ct => { if (ct != this) ct.EnqueueCommande(commd); });
+                }
+            }
+            return true;
+        }
+        private bool MessageSession(string message)
+        {
+            if (message != null && message.Length <= OutilsRéseau.TAILLE_MAX_MESSAGE && OutilsRéseau.EstMessageSecurisée(message))
+            {
+                BoardSession bs = sessionEnCours;
+                if (bs != null) bs.MessageSession(this, Identifiant + " : " + message);
+            }
+            return true;
+        }
+
+        private bool MajDroitsSession(Joueur.EDroits droits)
+        {
+            BoardSession bs = sessionEnCours;
+            if (bs != null) bs.MajDroitsSession(this, droits);
+            return true;
+        }
+        private bool MajDroitsJoueur(ushort idJr, Joueur.EDroits droits)
+        {
+            if (idJr > 0)
+            {
+                BoardSession bs = sessionEnCours;
+                if (bs != null) bs.MajDroitsJoueur(this, idJr, droits);
+            }
+            return true;
+        }
+
+        private bool PasseMainJoueur(ushort idJr)
+        {
+            if (idJr > 0 && (Joueur == null || Joueur.IdSessionJoueur != idJr))
+            {
+                BoardSession bs = sessionEnCours;
+                if (bs != null) bs.PasseMainJoueur(this, idJr);
+            }
+            return true;
+        }
+
         private bool DemandeElement(List<int> idElms)
         {
             BoardSession bs = sessionEnCours;
@@ -282,17 +369,27 @@ namespace BoardServer
             return true;
         }
 
-        private bool RéceptionImage()
+        private bool RéceptionImage(byte qualité, ushort coin, uint alpahCoul)
         {
             Image img = BibliothèqueImage.ChargerImage(ref fluxEntrant);
+            if (ImagesDemandés != null)
+            {
+                ImagesDemandés.Remove(img.Tag as string);
+                if (ImagesDemandés.Any() == false) ImagesDemandés = null;
+            }
             BoardSession bs = sessionEnCours;
-            if (bs != null) bs.NouvelleVersion(this, img);
+            if (bs != null) bs.NouvelleVersion(this, img, qualité, coin, alpahCoul);
             return true;
         }
 
         private bool RéceptionModel()
         {
             Model2_5D mld = BibliothèqueModel.ChargerModel(fluxEntrant, bibImg);
+            if(modelsDemandés != null)
+            {
+                modelsDemandés.Remove(mld.Tag as string);
+                if (modelsDemandés.Any() == false) modelsDemandés = null;
+            }
             VérifierBibliothèqueImages();
             BoardSession bs = sessionEnCours;
             if (bs != null) bs.NouvelleVersion(this, mld);
@@ -317,6 +414,13 @@ namespace BoardServer
             return true;
         }
 
+        private bool ChangerAngle(int idElm, float ang)
+        {
+            BoardSession bs = sessionEnCours;
+            if (bs != null && idElm > 0) bs.ChangerAngle(this, idElm, ang);
+            return true;
+        }
+
         private bool RouletteElément(int idElm, int delta)
         {
             BoardSession bs = sessionEnCours;
@@ -331,19 +435,19 @@ namespace BoardServer
             return true;
         }
 
-        private bool AttraperElement(PointF pj, int idElmPSrc, int idElmAtrp) // On reçoi un élément déjà en jeu
+        private bool AttraperElement(PointF pj, float angle, int idElmPSrc, int idElmAtrp) // On reçoi un élément déjà en jeu
         {
             BoardSession bs = sessionEnCours;
             //Journaliser("Attraper Version partage = " + bs.VersionDuPartage);
-            if (bs != null && idElmPSrc > 0 && idElmAtrp > 0) bs.AttraperElement(this, pj, idElmPSrc, idElmAtrp);
+            if (bs != null && idElmPSrc > 0 && idElmAtrp > 0) bs.AttraperElement(this, pj, angle, idElmPSrc, idElmAtrp);
             return true;
         }
 
-        private bool PiocherElement(PointF pj, int idElmPSrc, int index) // On pioche un nouvelle élément
+        private bool PiocherElement(PointF pj, float angle, int idElmPSrc, int index) // On pioche un nouvelle élément
         {
             BoardSession bs = sessionEnCours;
             //Journaliser("Piocher Version partage = " + bs.VersionDuPartage);
-            if (bs != null && idElmPSrc > 0) bs.PiocherElement(this, pj, idElmPSrc, index);
+            if (bs != null && idElmPSrc > 0) bs.PiocherElement(this, pj, angle, idElmPSrc, index);
             return true;
         }
 
@@ -355,7 +459,13 @@ namespace BoardServer
             return true;
         }
 
-
+        private bool TournerElémentAttrapé(PointF pj, float delta)
+        {
+            BoardSession bs = sessionEnCours;
+            //Journaliser("Lacher Version partage = " + bs.VersionDuPartage);
+            if (bs != null) bs.TournerElémentAttrapé(this, pj, delta);
+            return true;
+        }
 
 
 
@@ -421,6 +531,18 @@ namespace BoardServer
             if (bs != null) bs.SupprimerTout(this);
             return true;
         }
+
+        private bool ChatAudio(ushort idJr)
+        {
+            if (Joueur != null && Joueur.IdSessionJoueur == idJr)
+            {
+                BoardSession bs = sessionEnCours;
+                if (bs != null) bs.ChatAudio(this, fluxEntrant.ToArray());
+            }
+            fluxEntrant.Position = fluxEntrant.Length;
+            //fluxEntrant = new MemoryStream();
+            return true;
+        }
         #endregion
 
         public override void Close()
@@ -440,14 +562,17 @@ namespace BoardServer
             base.Close();
         }
 
-        public void QuiterSession(BoardSession bs)
+        public void QuitterSession(BoardSession bs)
         {
             if (sessionEnCours != null)
             {
                 lock (this)
                 {
+                    Joueur = null;
                     if (bs != sessionEnCours)
                         return;
+                    modelsDemandés = null;
+                    ImagesDemandés = null;
                     bibImg = null;
                     bibMod = null;
                     sessionEnCours = null;
